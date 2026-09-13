@@ -79,7 +79,23 @@ jobs:
       - name: Run acceptance lane
         env:
           SF_CI_LANE: ${{ matrix.target }}
+          SF_CI_ARTIFACT_DIR: .ci-timings
         run: make test-all
+      - name: Preserve baseline lane outcome
+        if: ${{ always() }}
+        env:
+          JOB_STATUS: ${{ job.status }}
+          LANE: ${{ matrix.target }}
+        run: |
+          mkdir -p .ci-timings
+          printf '{"schema":1,"mode":"%s","outcome":"%s"}\n' "$LANE" "$JOB_STATUS" > .ci-timings/baseline-outcome.json
+      - if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-timing-baseline-${{ matrix.target }}
+          path: .ci-timings
+          include-hidden-files: true
+          if-no-files-found: warn
 
   store-race:
     # modernc SQLite migration fixtures under -race exceed one package's hour

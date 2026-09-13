@@ -521,10 +521,28 @@ func compiledDevWalkingSkeletonConfigured(t *testing.T, mergeMode domain.MergeMo
 		}
 		compiledWalkingSkeletonCLI(t, binary, home, "ticket", "resume", string(ref.Ticket), "--json")
 		resumed := wait(domain.StateWaitingCI)
-		if resumed.Version != before+1 {
-			t.Fatalf("endpoint continuation version=%d, want %d", resumed.Version, before+1)
+		if resumed.Version < before+1 {
+			t.Fatalf("endpoint continuation version=%d, want at least %d", resumed.Version, before+1)
 		}
 		compiledWalkingSkeletonCLI(t, binary, home, "ticket", "resume", string(ref.Ticket), "--json")
+		// The admitted CI worker may already have appended pending observations.
+		// Authenticate the exact resume event instead of racing its live version.
+		events, err := readOnly.Events(context.Background(), ref.Channel, 0, 1000)
+		if err != nil || len(events) == 1000 {
+			t.Fatalf("read bounded endpoint events: count=%d err=%v", len(events), err)
+		}
+		resumes := 0
+		for _, event := range events {
+			if event.Ref == ref && event.Trigger == "operator_resume" {
+				resumes++
+				if event.TicketVersion != before+1 || event.From != domain.StatePaused || event.To != domain.StateWaitingCI {
+					t.Fatalf("unexpected endpoint resume event: %+v", event)
+				}
+			}
+		}
+		if resumes != 1 {
+			t.Fatalf("endpoint continuation events=%d, want exactly one", resumes)
+		}
 		if err := github.SetChecks(1, contracts.RequiredCheck{Name: "unit", ExternalID: "unit-1", State: "success"}); err != nil {
 			t.Fatal(err)
 		}
