@@ -468,6 +468,16 @@ func compiledDevWalkingSkeletonConfigured(t *testing.T, mergeMode domain.MergeMo
 		if !strings.Contains(string(status), `"state":"paused"`) || !strings.Contains(string(status), `"blocked_code":"pr_opened"`) || !strings.Contains(string(status), "continue_after_pr") {
 			t.Fatalf("restarted PR endpoint status=%s", status)
 		}
+		show := compiledWalkingSkeletonCLI(t, binary, home, "show", string(ref.Ticket), "--json")
+		if !strings.Contains(string(show), `"state":"paused"`) || !strings.Contains(string(show), `"blocked_code":"pr_opened"`) {
+			t.Fatalf("ticket view lost PR endpoint state=%s", show)
+		}
+		invalid := exec.Command(binary, "status", "not-a-real-ticket", "--json")
+		invalid.Env = os.Environ()
+		invalidOutput, invalidErr := invalid.CombinedOutput()
+		if invalidErr == nil || !strings.Contains(string(invalidOutput), `"code":"ticket_not_found"`) || strings.Contains(string(invalidOutput), "continue_after_pr") {
+			t.Fatalf("invalid ticket selection was not a safe JSON refusal: err=%v output=%s", invalidErr, invalidOutput)
+		}
 		readOnly.Close()
 		readOnly, err = store.OpenReadOnly(context.Background(), paths.Database)
 		if err != nil {
