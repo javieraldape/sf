@@ -4,6 +4,15 @@ Status: implementation approved on 2026-09-12; initial work from main `f632e81` 
 
 ## Current verification checkpoint
 
+- Diagnostic commit `0f72b93` passed GitHub ticket-entry `34746364160`.
+  Its verified installed draft attempt ran once and failed in 7.19s:
+  process_exit/exit1, no stdout, bounded stderr, option hint unclassified,
+  process-reported OS-error family permission, one launch and signed drain.
+  No home turn or retry. The new category narrows the report but does not prove
+  which operation failed or whether a provider API call occurred. Next is a
+  separately opted-in no-inference authenticated status probe inside the same
+  native authoring profile; no permissions or production argv are widened.
+
 - PR #12 merged with all 61 reported pre-merge checks passing. The renewed
   continuation is scoped first to diagnosis: a separate bounded process-reported
   OS-error family can classify multiline stderr without exposing fragments.

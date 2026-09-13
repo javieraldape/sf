@@ -9,6 +9,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -21,7 +22,7 @@ func TestAuthoringSandboxPreflightClosedArgv(t *testing.T) {
 		t.Fatal("expired context attempted probe")
 	}
 	for _, kind := range []string{"print", "status", "--help", "version --print", "", "help\n--print"} {
-		if _, ok := authoringProbeFlag(kind); ok {
+		if _, ok := authoringProbeArgs(kind); ok {
 			t.Fatal("non-probe command admitted")
 		}
 		facts, _ := authoringSandboxProbe(context.Background(), []string{"/must-not-execute", "fixture"}, kind, "/", nil, time.Second)
@@ -29,8 +30,8 @@ func TestAuthoringSandboxPreflightClosedArgv(t *testing.T) {
 			t.Fatal("invalid probe attempted launch")
 		}
 	}
-	for kind, expected := range map[string]string{"version": "--version", "help": "--help"} {
-		if flag, ok := authoringProbeFlag(kind); !ok || flag != expected {
+	for kind, expected := range map[string][]string{"version": {"--version"}, "help": {"--help"}, "auth_status": {"--max-turns", "3", "--safe-mode", "--restricted", "auth", "status"}} {
+		if args, ok := authoringProbeArgs(kind); !ok || !reflect.DeepEqual(args, expected) {
 			t.Fatal("probe argv changed")
 		}
 	}
@@ -111,6 +112,82 @@ func TestAuthoringSandboxPreflightClosedArgv(t *testing.T) {
 	}
 }
 
+func TestAuthoringAuthenticatedPreflightSourceBoundary(t *testing.T) {
+	file, err := parser.ParseFile(token.NewFileSet(), "authoring_auth_preflight_installed_darwin_test.go", nil, 0)
+	if err != nil {
+		t.Fatal("authenticated preflight source unavailable")
+	}
+	printed := func(node ast.Node) string {
+		var out bytes.Buffer
+		if format.Node(&out, token.NewFileSet(), node) != nil {
+			t.Fatal("invalid authenticated preflight syntax")
+		}
+		return out.String()
+	}
+	var native *ast.FuncDecl
+	for _, declaration := range file.Decls {
+		if fn, ok := declaration.(*ast.FuncDecl); ok && fn.Name.Name == "TestInstalledClaudeAuthoringAuthenticatedSandboxPreflight" {
+			native = fn
+		}
+	}
+	if native == nil {
+		t.Fatal("missing authenticated preflight")
+	}
+	gate, ok := native.Body.List[0].(*ast.IfStmt)
+	if !ok || printed(gate.Cond) != `os.Getenv("SF_TEST_CLAUDE_AUTHORING_AUTH_PREFLIGHT") != "1"` {
+		t.Fatal("authenticated probe lacks dedicated first opt-in")
+	}
+	getenv, prepare, probe, environment, profile := 0, 0, 0, 0, 0
+	ast.Inspect(file, func(node ast.Node) bool {
+		if identifier, ok := node.(*ast.Ident); ok {
+			switch identifier.Name {
+			case "authoringArgv", "authoringPurposeArgv", "authoringStdin", "AuthoringClaim", "Store", "acquireAuthoring", "authoringProbeArgs":
+				t.Fatal("authenticated preflight gained inference or claim surface")
+			}
+		}
+		call, ok := node.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		if selector, ok := call.Fun.(*ast.SelectorExpr); ok {
+			switch selector.Sel.Name {
+			case "Getenv":
+				getenv++
+			case "PrepareAuthoring":
+				prepare++
+				if printed(call) != "s.PrepareAuthoring(prepareCtx, model)" {
+					t.Fatal("unexpected preparation")
+				}
+			case "Command", "CommandContext", "StartProcess", "Exec", "RunAuthoring", "CombinedOutput", "Open", "ReserveAuthoringTurn":
+				t.Fatal("authenticated preflight bypassed bounded no-model helper")
+			}
+		}
+		if identifier, ok := call.Fun.(*ast.Ident); ok {
+			switch identifier.Name {
+			case "authoringSandboxProbe":
+				probe++
+				if printed(call) != `authoringSandboxProbe(ctx, prefix, "auth_status", tmp, env, 5*time.Second)` {
+					t.Fatal("authenticated probe argv changed")
+				}
+			case "vettedCLIEnvironment":
+				environment++
+				if printed(call) != `vettedCLIEnvironment(ctx, "claude", capability.AuthDigest, lookupCLISecret)` {
+					t.Fatal("credential binding changed")
+				}
+			case "authoringSandboxCommand":
+				profile++
+				if printed(call) != "authoringSandboxCommand(trusted, home, tmp)" {
+					t.Fatal("profile construction changed")
+				}
+			}
+		}
+		return true
+	})
+	if getenv != 1 || prepare != 1 || probe != 1 || environment != 1 || profile != 1 {
+		t.Fatal("authenticated preflight must have exactly one fixed status probe")
+	}
+}
+
 func TestAuthoringSandboxPreflightSyntheticCaptureAndDrain(t *testing.T) {
 	for _, test := range []struct {
 		name, body string
@@ -119,6 +196,7 @@ func TestAuthoringSandboxPreflightSyntheticCaptureAndDrain(t *testing.T) {
 	}{
 		{"exact argument", `test "$#" = 1 && test "$1" = --version || exit 4; printf fixture`, false, 0},
 		{"exact help", `test "$#" = 1 && test "$1" = --help || exit 4; printf fixture`, false, 0},
+		{"exact auth status", `test "$#" = 6 && test "$1" = --max-turns && test "$2" = 3 && test "$3" = --safe-mode && test "$4" = --restricted && test "$5" = auth && test "$6" = status || exit 4; if IFS= read -r line; then exit 5; fi; test -z "$line" || exit 5; printf fixture`, false, 0},
 		{"capture cap", "head -c 65537 /dev/zero", true, 0},
 		{"nonzero", "exit 7", false, 7},
 		{"bounded stop", "exec /bin/sleep 30", false, -1},
@@ -134,6 +212,9 @@ func TestAuthoringSandboxPreflightSyntheticCaptureAndDrain(t *testing.T) {
 			kind := "version"
 			if test.name == "exact help" {
 				kind = "help"
+			}
+			if test.name == "exact auth status" {
+				kind = "auth_status"
 			}
 			facts, output := authoringSandboxProbe(ctx, []string{"/bin/sh", "/bin/sh", path}, kind, dir, []string{"PATH=/usr/bin:/bin"}, 2*time.Second)
 			if !facts.Started || !facts.Waited || !facts.GroupAbsent || !facts.CaptureKnown || facts.ExitCode != test.exit || facts.Truncated != test.truncated || len(output) > 64<<10 {

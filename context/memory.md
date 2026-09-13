@@ -2,6 +2,20 @@
 
 ## Current truth
 
+- `0f72b93` GitHub ticket-entry `34746364160` PASS (CLI normal/race,
+  authoring regressions, build, repository/docs/secret checks). Verified artifact
+  SHA256: test `c0ca4dd1d387692827c83a6832f4776e42bd878ba0f405dc119f7f52951a46d7`,
+  gate `1947243465f0eae7069822a1d2aa1ebf29428b4b83b9f815faf2f32a6b71ed75`.
+  Initial execution was rejected before launch for insufficient payload evidence;
+  root traced EncodeRequest and fixed fixture inputs (empty reference, no project
+  content) and the same command was approved. Exactly one draft then ran in
+  session 90453: FAIL 7.19s, process_exit/exit1, stdout absent, bounded stderr,
+  option hint unclassified, process-reported error family permission, one launch,
+  valid signed drain. No home turn/retry. This is an untrusted permission-token
+  report, not proof of a syscall, sandbox cause, or API request. Next: separate
+  no-inference authenticated status probe under the exact authoring profile.
+  Do not relax permissions or repeat drafting without a new bounded decision.
+
 - 2026-09-13 continuation: PR #12 merged at `3dda60b` with 61 passing
   pre-merge checks; merged tree equals reviewed `43ac065`. The user renewed
   authorization to continue. New branch `fix/authoring-startup-classification`

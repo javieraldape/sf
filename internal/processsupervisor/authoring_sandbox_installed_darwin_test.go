@@ -17,16 +17,19 @@ type authoringProbeFacts struct {
 	Started, Waited, GroupAbsent, CaptureKnown bool
 	ExitCode                                   int
 	StdoutPresent, StderrPresent, Truncated    bool
+	ProcessReportedErrorFamily                 string
 }
 
-func authoringProbeFlag(kind string) (string, bool) {
+func authoringProbeArgs(kind string) ([]string, bool) {
 	switch kind {
 	case "version":
-		return "--version", true
+		return []string{"--version"}, true
 	case "help":
-		return "--help", true
+		return []string{"--help"}, true
+	case "auth_status":
+		return []string{"--max-turns", "3", "--safe-mode", "--restricted", "auth", "status"}, true
 	default:
-		return "", false
+		return nil, false
 	}
 }
 
@@ -34,11 +37,11 @@ func authoringProbeFlag(kind string) (string, bool) {
 // and group absence are observed. This is not a signed workflow drain proof.
 func authoringSandboxProbe(ctx context.Context, prefix []string, kind, cwd string, env []string, limit time.Duration) (authoringProbeFacts, []byte) {
 	facts := authoringProbeFacts{ExitCode: -1}
-	flag, ok := authoringProbeFlag(kind)
+	args, ok := authoringProbeArgs(kind)
 	if !ok || len(prefix) < 2 || limit <= 0 || limit > 5*time.Second {
 		return facts, nil
 	}
-	cmd := exec.Command(prefix[0], append(append([]string{}, prefix[2:]...), flag)...)
+	cmd := exec.Command(prefix[0], append(append([]string{}, prefix[2:]...), args...)...)
 	cmd.Args[0] = prefix[1]
 	cmd.Dir, cmd.Env = cwd, env
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -98,6 +101,7 @@ func authoringSandboxProbe(ctx context.Context, prefix []string, kind, cwd strin
 	facts.ExitCode = cmd.ProcessState.ExitCode()
 	facts.StdoutPresent, facts.StderrPresent = stdout.Len() > 0, stderr.Len() > 0
 	facts.Truncated = stdout.truncated || stderr.truncated
+	facts.ProcessReportedErrorFamily = classifyAuthoringErrorFamily(stderr.Bytes(), stderr.truncated)
 	return facts, append([]byte(nil), stdout.Bytes()...)
 }
 
