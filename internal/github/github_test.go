@@ -142,6 +142,34 @@ func createDraft(t *testing.T, client *Client, identity contracts.PullRequestIde
 	return match
 }
 
+func TestPublicationIgnoresUnrelatedRepositoryHistory(t *testing.T) {
+	client, fake, identity := fixture(t)
+	for i := 1; i <= 101; i++ {
+		other := identity
+		other.Number = i
+		other.HeadRef = fmt.Sprintf("historical/branch-%d", i)
+		if err := fake.InjectPullRequestForTest(testkit.PullRequest{Identity: other, Merged: true, MergeCommit: strings.Repeat("d", 40), Body: "unrelated"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, found, err := client.ObservePublicationCandidate(context.Background(), identity); err != nil || found {
+		t.Fatalf("scoped absence: found=%v err=%v", found, err)
+	}
+	created := createDraft(t, client, identity, "title", "body").Identity
+	if _, found, err := client.ObservePublicationCandidate(context.Background(), created); err != nil || !found {
+		t.Fatalf("scoped presence: found=%v err=%v", found, err)
+	}
+	if _, err := client.ObservePublishedPullRequest(context.Background(), created); err != nil {
+		t.Fatalf("published lookup: %v", err)
+	}
+	if _, err := client.CreateDraftPullRequest(context.Background(), testClaim("draft_pr", identity, "title", "body"), identity, "title", "body"); err != nil {
+		t.Fatal(err)
+	}
+	if count := fake.MutationCount("pr_create"); count != 1 {
+		t.Fatalf("create replay mutated %d times", count)
+	}
+}
+
 func TestRefreshFactoryPullRequestIdentityAcceptsOldMarkerAfterHeadCorrection(t *testing.T) {
 	client, fake, identity := fixture(t)
 	prior := createDraft(t, client, identity, "title", "body").Identity
@@ -329,7 +357,7 @@ func TestRefreshFactoryPullRequestIdentityRefusals(t *testing.T) {
 				}
 				return
 			}
-			wantArgs := []string{"pr", "list", "--repo", "example/app", "--state", "all", "--limit", "100", "--json", prFields}
+			wantArgs := []string{"pr", "list", "--repo", "example/app", "--head", "sf/dev/example/SF-44-random", "--state", "all", "--limit", "100", "--json", prFields}
 			if !reflect.DeepEqual(calls, [][]string{wantArgs}) {
 				t.Fatalf("refresh calls=%#v want only read list %#v", calls, wantArgs)
 			}
@@ -462,7 +490,7 @@ func refreshTestClient(t *testing.T, response []byte, calls *[][]string) *Client
 	t.Helper()
 	return &Client{binaryPath: "/bin/echo", home: t.TempDir(), configDir: t.TempDir(), quarantiner: cleanupQuarantinerFunc(func(context.Context) error { return nil }), runner: commandRunnerFunc(func(_ context.Context, _ string, args, _ []string) ([]byte, error) {
 		*calls = append(*calls, append([]string(nil), args...))
-		if !reflect.DeepEqual(args, []string{"pr", "list", "--repo", "example/app", "--state", "all", "--limit", "100", "--json", prFields}) {
+		if !reflect.DeepEqual(args, []string{"pr", "list", "--repo", "example/app", "--head", "sf/dev/example/SF-44-random", "--state", "all", "--limit", "100", "--json", prFields}) {
 			return nil, errors.New("unexpected command")
 		}
 		return response, nil
@@ -2184,12 +2212,12 @@ func TestOfficialGHArgvGolden(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := [][]string{
-		{"pr", "list", "--repo", "example/app", "--state", "all", "--limit", "100", "--json", prFields},
+		{"pr", "list", "--repo", "example/app", "--head", "sf/dev/example/SF-44-random", "--state", "all", "--limit", "100", "--json", prFields},
 		{"api", "repos/example/app/git/ref/heads/main"},
 		{"api", "repos/example/app/git/ref/heads/sf/dev/example/SF-44-random"},
-		{"pr", "list", "--repo", "example/app", "--state", "all", "--limit", "100", "--json", prFields},
+		{"pr", "list", "--repo", "example/app", "--head", "sf/dev/example/SF-44-random", "--state", "all", "--limit", "100", "--json", prFields},
 		{"pr", "create", "--repo", "example/app", "--head", "example:sf/dev/example/SF-44-random", "--base", "main", "--draft", "--title", "title", "--body", "body\n\n" + ownershipMarker(identity)},
-		{"pr", "list", "--repo", "example/app", "--state", "all", "--limit", "100", "--json", prFields},
+		{"pr", "list", "--repo", "example/app", "--head", "sf/dev/example/SF-44-random", "--state", "all", "--limit", "100", "--json", prFields},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("official gh argv\n got: %#v\nwant: %#v", got, want)
@@ -2256,7 +2284,7 @@ func TestOfficialMergeArgvGoldenAndProof(t *testing.T) {
 	rules := []string{"api", "--hostname", "github.com", "--method", "GET", "repos/example/app/rules/branches/main?per_page=100&page=1"}
 	rulesetAudit := []string{"api", "--hostname", "github.com", "--method", "GET", "repos/example/app/rulesets?includes_parents=true&targets=branch&per_page=100&page=1"}
 	view := []string{"pr", "view", "7", "--repo", "example/app", "--json", prFields}
-	want := [][]string{{"pr", "list", "--repo", "example/app", "--state", "all", "--limit", "100", "--json", prFields}, queue, protection, rules, rulesetAudit, view, queue, protection, rules, rulesetAudit, {"pr", "merge", "7", "--repo", "example/app", "--match-head-commit", identity.HeadOID, "--squash"}, view}
+	want := [][]string{{"pr", "list", "--repo", "example/app", "--head", "sf/dev/example/SF-44-random", "--state", "all", "--limit", "100", "--json", prFields}, queue, protection, rules, rulesetAudit, view, queue, protection, rules, rulesetAudit, {"pr", "merge", "7", "--repo", "example/app", "--match-head-commit", identity.HeadOID, "--squash"}, view}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("official merge argv\n got: %#v\nwant: %#v", got, want)
 	}
