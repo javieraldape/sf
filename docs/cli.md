@@ -196,7 +196,7 @@ sf ticket import <github-issue-url> [--json]
 sf home [--project <name>]
 sf ticket validate <ticket.md>
 sf ticket submit <ticket.md> --project <name>
-sf ticket start [ticket] [--file <ticket.md> --project <name>] [--watch]
+sf ticket start [ticket] [--file <ticket.md> --project <name>] [--until pr] [--watch]
 sf ticket list [--project <name>]
 sf ticket view <ticket> [--section <name>]
 sf ticket watch [ticket]

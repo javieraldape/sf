@@ -2641,7 +2641,7 @@ func nonRecoverableTicketBlocker(code string) bool {
 
 func (daemon *Daemon) ticketBlockedNextAction(value store.Ticket) (domain.NextAction, bool) {
 	if value.State == domain.StatePaused && value.ResumeState == domain.StateWaitingCI && value.BlockedCode == "pr_opened" {
-		return domain.NextAction{Code: "continue_after_pr", Argv: []string{daemon.executable(), "resume", string(value.Ref.Ticket)}}, true
+		return domain.NextAction{Code: "continue_after_pr", Argv: []string{daemon.executable(), "ticket", "resume", string(value.Ref.Ticket)}}, true
 	}
 	if !nonRecoverableTicketBlocker(value.BlockedCode) || value.Ref.Ticket == "" {
 		return domain.NextAction{}, false

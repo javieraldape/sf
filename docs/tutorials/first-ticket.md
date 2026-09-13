@@ -236,6 +236,33 @@ sf run ticket.md --project my-app --accept-cost-estimates --watch
 ```
 
 This submits and starts the exact queued ticket, then follows its status.
+
+### Stop at the first draft PR
+
+To hand off a draft PR without SF starting CI correction or final review, select
+the endpoint before starting the ticket:
+
+```sh
+sf ticket start --file ticket.md --project my-app --until pr --accept-cost-estimates --watch
+```
+
+The cost-estimates flag is needed for the Claude/Codex example pair; it does
+not turn estimates into a hard billing cap. `--until pr` is also accepted by
+the existing-ticket start route and the compatible root `run` command.
+
+After exact publication, the ticket is durably `paused` with reason
+`pr_opened`. GitHub's own checks can still run, but SF does not proceed to CI
+observation/correction, final review, ready, or merge. Restarting the daemon
+does not resume the ticket. To continue deliberately, run:
+
+```sh
+sf ticket resume <ticket>
+```
+
+Continuation consumes this first-PR endpoint once. Later corrections use the
+normal lifecycle and existing merge policy. Without `--until pr`, the normal
+full lifecycle is unchanged. An endpoint cannot be added retroactively to an
+already active ticket.
 Choose the appropriate command above, not both. Estimate consent is sent only
 when starting a queued ticket; it cannot change an already active ticket.
 Ctrl-C stops watching, not the ticket. If start is refused, submission still
