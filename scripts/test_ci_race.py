@@ -50,6 +50,28 @@ class RacePartitionTest(unittest.TestCase):
             self.assertIn("SF_CI_ARTIFACT_DIR: .ci-timings", body)
             self.assertIn("uses: actions/upload-artifact@v4", body)
 
+    def test_recovery_candidate_lanes_select_each_split_scenario_once(self):
+        root = Path(__file__).resolve().parent.parent
+        workflow = (root / ".github/workflows/recovery-candidate.yml").read_text()
+        runtime_source = (root / "internal/workflowruntime/protected_amendment_recovery_test.go").read_text()
+        candidate_source = (root / "internal/workflowruntime/postbuild_candidate_recovery_test.go").read_text()
+        expected = {
+            "TestRepositoryMaterializerPostbuildAmendmentPreparedIndexRecoverySameFence",
+            "TestRepositoryMaterializerPostbuildAmendmentPreparedIndexRecoveryNewLeader",
+            "TestRepositoryMaterializerPostbuildAmendmentPreparedIndexRecoverySyncedNewLeader",
+            "TestPostbuildAmendmentCandidateFinalizationRecovery",
+            "TestPostbuildAmendmentCandidateFinalizationRecoveryAfterRestart",
+            "TestPostbuildAmendmentRecordedCandidateFinalizationRecovery",
+            "TestPostbuildAmendmentRecordedCandidateFinalizationRecoveryAfterRestart",
+        }
+        declared = set(re.findall(r"func (Test\w+)\(t \*testing\.T\)",
+                                  runtime_source + candidate_source))
+        self.assertLessEqual(expected, declared)
+        for name in expected:
+            self.assertEqual(workflow.count("selector='" + name + "'"), 1)
+        self.assertNotIn("PreparedIndexRecovery$/", workflow)
+        self.assertNotIn("CandidateFinalizationRecovery$/", workflow)
+
     def test_required_acceptance_gate_is_fail_closed(self):
         workflow = (Path(__file__).resolve().parent.parent /
                     ".github/workflows/repository-baseline.yml").read_text()

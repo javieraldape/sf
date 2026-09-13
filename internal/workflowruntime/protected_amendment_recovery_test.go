@@ -13,15 +13,16 @@ import (
 	"github.com/nysa-company/sf/internal/worktreecoord"
 )
 
-func TestRepositoryMaterializerPostbuildAmendmentPreparedIndexRecovery(t *testing.T) {
-	for _, restart := range []bool{false, true} {
-		name := "same_fence"
-		if restart {
-			name = "new_leader"
-		}
-		t.Run(name, func(t *testing.T) { testPostbuildAmendmentPreparedIndexRecovery(t, restart, false) })
-	}
-	t.Run("synced_new_leader", func(t *testing.T) { testPostbuildAmendmentPreparedIndexRecovery(t, true, true) })
+func TestRepositoryMaterializerPostbuildAmendmentPreparedIndexRecoverySameFence(t *testing.T) {
+	testPostbuildAmendmentPreparedIndexRecovery(t, false, false)
+}
+
+func TestRepositoryMaterializerPostbuildAmendmentPreparedIndexRecoveryNewLeader(t *testing.T) {
+	testPostbuildAmendmentPreparedIndexRecovery(t, true, false)
+}
+
+func TestRepositoryMaterializerPostbuildAmendmentPreparedIndexRecoverySyncedNewLeader(t *testing.T) {
+	testPostbuildAmendmentPreparedIndexRecovery(t, true, true)
 }
 
 func testPostbuildAmendmentPreparedIndexRecovery(t *testing.T, restart, synced bool) {

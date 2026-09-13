@@ -40,8 +40,15 @@ PACKAGE_SECONDS = {
     }.items()
 }
 RUNTIME_RACE_SECONDS = {
-    "TestPostbuildAmendmentCandidateFinalizationRecovery": 873,
-    "TestRepositoryMaterializerPostbuildAmendmentPreparedIndexRecovery": 993,
+    # Inferred per-scenario hints divide the successful pre-split aggregate;
+    # hosted timings should replace them after the first successful split run.
+    "TestPostbuildAmendmentCandidateFinalizationRecovery": 218,
+    "TestPostbuildAmendmentCandidateFinalizationRecoveryAfterRestart": 218,
+    "TestPostbuildAmendmentRecordedCandidateFinalizationRecovery": 218,
+    "TestPostbuildAmendmentRecordedCandidateFinalizationRecoveryAfterRestart": 218,
+    "TestRepositoryMaterializerPostbuildAmendmentPreparedIndexRecoverySameFence": 331,
+    "TestRepositoryMaterializerPostbuildAmendmentPreparedIndexRecoveryNewLeader": 331,
+    "TestRepositoryMaterializerPostbuildAmendmentPreparedIndexRecoverySyncedNewLeader": 331,
     "TestPostbuildRepairCandidateFinalizationRecovery": 437,
     "TestRepositoryMaterializerPostbuildAmendmentRealEndToEnd": 262,
     "TestRepositoryMaterializerPostbuildRepairRealEndToEnd": 106,
@@ -93,8 +100,15 @@ STORE_RACE_SECONDS = {
     "TestVerificationAmendmentDecisionHistoryCrossesRecoveryBeforeDecision": 20,
 }
 RUNTIME_INTEGRATION_SECONDS = {
-    "TestPostbuildAmendmentCandidateFinalizationRecovery": 484,
-    "TestRepositoryMaterializerPostbuildAmendmentPreparedIndexRecovery": 465,
+    # Inferred per-scenario hints divide the successful pre-split aggregate;
+    # hosted timings should replace them after the first successful split run.
+    "TestPostbuildAmendmentCandidateFinalizationRecovery": 134,
+    "TestPostbuildAmendmentCandidateFinalizationRecoveryAfterRestart": 134,
+    "TestPostbuildAmendmentRecordedCandidateFinalizationRecovery": 134,
+    "TestPostbuildAmendmentRecordedCandidateFinalizationRecoveryAfterRestart": 134,
+    "TestRepositoryMaterializerPostbuildAmendmentPreparedIndexRecoverySameFence": 149,
+    "TestRepositoryMaterializerPostbuildAmendmentPreparedIndexRecoveryNewLeader": 149,
+    "TestRepositoryMaterializerPostbuildAmendmentPreparedIndexRecoverySyncedNewLeader": 149,
     "TestPostbuildRepairCandidateFinalizationRecovery": 336,
     "TestRepositoryMaterializerPostbuildAmendmentRealEndToEnd": 184,
     "TestRepositoryMaterializerPreparePostbuildRepairRealBoundary": 72,
@@ -103,8 +117,15 @@ RUNTIME_INTEGRATION_SECONDS = {
     "TestRepositoryMaterializerRealStoreGitReplay": 43,
 }
 CRASH_RUNTIME_SECONDS = {
-    "TestPostbuildAmendmentCandidateFinalizationRecovery": 459,
-    "TestRepositoryMaterializerPostbuildAmendmentPreparedIndexRecovery": 491,
+    # Inferred per-scenario hints divide the successful pre-split aggregate;
+    # hosted timings should replace them after the first successful split run.
+    "TestPostbuildAmendmentCandidateFinalizationRecovery": 115,
+    "TestPostbuildAmendmentCandidateFinalizationRecoveryAfterRestart": 115,
+    "TestPostbuildAmendmentRecordedCandidateFinalizationRecovery": 115,
+    "TestPostbuildAmendmentRecordedCandidateFinalizationRecoveryAfterRestart": 115,
+    "TestRepositoryMaterializerPostbuildAmendmentPreparedIndexRecoverySameFence": 164,
+    "TestRepositoryMaterializerPostbuildAmendmentPreparedIndexRecoveryNewLeader": 164,
+    "TestRepositoryMaterializerPostbuildAmendmentPreparedIndexRecoverySyncedNewLeader": 164,
     "TestPostbuildRepairCandidateFinalizationRecovery": 314,
 }
 MODE_WEIGHTS = {
