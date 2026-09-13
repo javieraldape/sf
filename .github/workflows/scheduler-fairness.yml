@@ -18,7 +18,7 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Fairness, concurrency, and control regression suites
-        run: go test -race -p 1 -count=1 ./internal/workflowruntime
+        run: go test -race -p 1 -count=1 ./internal/workflowruntime ./internal/codexprovider
       - name: Prove old scheduler starves its sibling
         run: |
           cp internal/workflowruntime/scheduler.go "$RUNNER_TEMP/scheduler-fixed.go"
@@ -33,6 +33,6 @@ jobs:
           grep -Fq 'fair scheduling: got a-wait (invoked), want b-build' "$RUNNER_TEMP/starvation.log"
       - name: Static checks
         run: |
-          go vet ./internal/workflowruntime
+          go vet ./internal/workflowruntime ./internal/codexprovider
           scripts/repo-check
           scripts/secret-scan

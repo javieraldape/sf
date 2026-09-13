@@ -180,9 +180,9 @@ func ComposeProfiles(ctx context.Context, channel domain.Channel, database *stor
 // ComposeProfilesWithCapacity applies an explicit, tightly bounded capacity
 // to the shared provider/auth lease. Store remains the authority for machine,
 // project, and provider admission; this only permits the caller to opt into
-// the already-supported two-worker ceiling.
+// the bounded three-worker ceiling. The default remains one provider call.
 func ComposeProfilesWithCapacity(ctx context.Context, channel domain.Channel, database *store.Store, process contracts.ProcessSupervisor, profiles []Config, capacity int) (*providercoord.Coordinator, error) {
-	if capacity < 1 || capacity > 2 {
+	if capacity < 1 || capacity > 3 {
 		return nil, errors.New("invalid Codex provider capacity")
 	}
 	if !channel.Valid() || database == nil || process == nil {
@@ -213,8 +213,10 @@ func configuredProviderCapacity() (int, error) {
 		return 1, nil
 	case "2":
 		return 2, nil
+	case "3":
+		return 3, nil
 	default:
-		return 0, errors.New("invalid SF_CODEX_PROVIDER_CAPACITY: expected 1 or 2")
+		return 0, errors.New("invalid SF_CODEX_PROVIDER_CAPACITY: expected 1, 2, or 3")
 	}
 }
 
