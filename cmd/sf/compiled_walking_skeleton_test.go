@@ -21,6 +21,7 @@ import (
 	"github.com/nysa-company/sf/internal/config"
 	"github.com/nysa-company/sf/internal/contracts"
 	"github.com/nysa-company/sf/internal/domain"
+	"github.com/nysa-company/sf/internal/processsupervisor"
 	"github.com/nysa-company/sf/internal/store"
 	"github.com/nysa-company/sf/internal/testkit"
 )
@@ -48,6 +49,22 @@ func TestCompiledDevPREndpointWalkingSkeleton(t *testing.T) {
 }
 
 func TestCompiledDevNodePREndpointWalkingSkeleton(t *testing.T) {
+	// Fail at the actual runtime prerequisite rather than waiting for a ticket
+	// whose authenticated Node command cannot launch. This uses the production
+	// resolver/stager, not PATH or an unsandboxed substitute runtime.
+	if _, _, err := processsupervisor.RepositoryCommandExecutableIdentity([]string{"node", "--test"}); err != nil {
+		for _, candidate := range []string{"/opt/homebrew/bin/node", "/usr/local/bin/node"} {
+			resolved, resolveErr := filepath.EvalSymlinks(candidate)
+			if resolveErr != nil {
+				t.Logf("Node runtime candidate unavailable: %s", candidate)
+				continue
+			}
+			if info, statErr := os.Stat(resolved); statErr == nil {
+				t.Logf("Node runtime candidate: %s bytes=%d mode=%s", resolved, info.Size(), info.Mode())
+			}
+		}
+		t.Fatalf("authenticated Node runtime prerequisite: %v", err)
+	}
 	t.Setenv("SF_TEST_UNTIL_PR", "1")
 	t.Setenv("SF_TEST_NODE_FIXTURE", "1")
 	t.Setenv("SF_FAKE_PROVIDER_NODE_FIXTURE", "1")
