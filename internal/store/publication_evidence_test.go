@@ -156,6 +156,14 @@ func publicationLifecycleFixture(t *testing.T) (*Store, context.Context, Ticket,
 }
 
 func publicationLifecycleFixtureFor(t *testing.T, ticketType domain.TicketType, mergeMode domain.MergeMode, beforePlanner ...func(*Store, context.Context, Ticket, domain.Fence) Ticket) (*Store, context.Context, Ticket, domain.Fence) {
+	return publicationLifecycleFixtureForEndpoint(t, ticketType, mergeMode, "", beforePlanner...)
+}
+
+func publicationLifecycleEndpointFixture(t *testing.T) (*Store, context.Context, Ticket, domain.Fence) {
+	return publicationLifecycleFixtureForEndpoint(t, domain.TicketFeature, domain.MergeGuarded, ExecutionEndpointPR)
+}
+
+func publicationLifecycleFixtureForEndpoint(t *testing.T, ticketType domain.TicketType, mergeMode domain.MergeMode, endpoint string, beforePlanner ...func(*Store, context.Context, Ticket, domain.Fence) Ticket) (*Store, context.Context, Ticket, domain.Fence) {
 	t.Helper()
 	db, ctx := openTestStore(t)
 	configDigest := setupProviderProject(t, db, ctx)
@@ -168,7 +176,12 @@ func publicationLifecycleFixtureFor(t *testing.T, ticketType domain.TicketType, 
 	if err := db.CreateTicket(ctx, Ticket{Ref: ref, SourceDigest: source, Type: ticketType, MergeMode: mergeMode, CreatedAt: time.Now().UTC(), MaxDuration: time.Hour, MaxCostMicroUSD: 100}); err != nil {
 		t.Fatalf("publication fixture create ticket: %v", err)
 	}
-	ticket, err := db.StartOrAdopt(ctx, ref, 1, "dev/provider/SF-publication-lifecycle", domain.Fence{LeaderEpoch: leader, RunnerEpoch: 1})
+	var ticket Ticket
+	if endpoint == "" {
+		ticket, err = db.StartOrAdopt(ctx, ref, 1, "dev/provider/SF-publication-lifecycle", domain.Fence{LeaderEpoch: leader, RunnerEpoch: 1})
+	} else {
+		ticket, _, err = db.StartWithProjectOwnershipUntil(ctx, ref, 1, domain.Fence{LeaderEpoch: leader, RunnerEpoch: 1}, "dev/provider/SF-publication-lifecycle", time.Now().UTC(), endpoint)
+	}
 	if err != nil {
 		t.Fatalf("publication fixture start or adopt: %v", err)
 	}
@@ -382,10 +395,7 @@ func TestPausedPublishingResumeToWaitingCIAuthenticatesControlLineage(t *testing
 }
 
 func TestPublishedCandidateAtomicallyStopsAtFirstPREndpointAndConsumesOnce(t *testing.T) {
-	db, ctx, ticket, fence := publicationLifecycleFixture(t)
-	if _, err := db.db.ExecContext(ctx, `INSERT INTO ticket_execution_policies(channel,project_id,ticket_id,endpoint,start_ticket_version,created_at) VALUES(?,?,?,'pr',2,?)`, ticket.Ref.Channel, ticket.Ref.Project, ticket.Ref.Ticket, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
-		t.Fatal(err)
-	}
+	db, ctx, ticket, fence := publicationLifecycleEndpointFixture(t)
 	recordFixturePublication(t, db, ctx, ticket, fence)
 	transition := Transition{Ref: ticket.Ref, ExpectedVersion: ticket.Version, From: domain.StatePublishing, To: domain.StateWaitingCI, Trigger: "effects_confirmed", Fence: fence}
 	result, err := db.TransitionPublishedCandidate(ctx, transition)
@@ -409,10 +419,7 @@ func TestPublishedCandidateAtomicallyStopsAtFirstPREndpointAndConsumesOnce(t *te
 }
 
 func TestPREndpointSurvivesPausedLeadersAndPostResumeRecovery(t *testing.T) {
-	db, ctx, ticket, fence := publicationLifecycleFixture(t)
-	if _, err := db.db.ExecContext(ctx, `INSERT INTO ticket_execution_policies(channel,project_id,ticket_id,endpoint,start_ticket_version,created_at) VALUES(?,?,?,'pr',2,?)`, ticket.Ref.Channel, ticket.Ref.Project, ticket.Ref.Ticket, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
-		t.Fatal(err)
-	}
+	db, ctx, ticket, fence := publicationLifecycleEndpointFixture(t)
 	recordFixturePublication(t, db, ctx, ticket, fence)
 	if _, err := db.TransitionPublishedCandidate(ctx, Transition{Ref: ticket.Ref, ExpectedVersion: ticket.Version, From: domain.StatePublishing, To: domain.StateWaitingCI, Trigger: "effects_confirmed", Fence: fence}); err != nil {
 		t.Fatal(err)
