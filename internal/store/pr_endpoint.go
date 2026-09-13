@@ -150,6 +150,7 @@ func (s *Store) ResumePREndpoint(ctx context.Context, ref domain.TicketRef, expe
 		if ok, err := hasUnconsumedPREndpoint(ctx, conn, ref); err != nil || !ok {
 			return ErrPublicationEvidence
 		}
+		var err error
 		pauseVersion, witness, err = authenticatePREndpoint(ctx, conn, ref, version)
 		if err != nil {
 			return err
@@ -169,7 +170,7 @@ func (s *Store) ResumePREndpoint(ctx context.Context, ref domain.TicketRef, expe
 		if _, err := conn.ExecContext(ctx, `INSERT INTO events(channel,project_id,ticket_id,ticket_version,trigger,from_state,to_state,payload,created_at) VALUES(?,?,?,?,?,?,?,?,?)`, ref.Channel, ref.Project, ref.Ticket, version+1, "operator_resume", domain.StatePaused, domain.StateWaitingCI, string(payload), created); err != nil {
 			return err
 		}
-		_, err := conn.ExecContext(ctx, `INSERT INTO ticket_endpoint_consumptions(channel,project_id,ticket_id,endpoint,paused_ticket_version,consumed_ticket_version,leader_epoch,runner_epoch,publication_witness_digest,created_at) VALUES(?,?,?,'pr',?,?,?,?,?,?)`, ref.Channel, ref.Project, ref.Ticket, pauseVersion, version+1, fence.LeaderEpoch, fence.RunnerEpoch, witness, created)
+		_, err = conn.ExecContext(ctx, `INSERT INTO ticket_endpoint_consumptions(channel,project_id,ticket_id,endpoint,paused_ticket_version,consumed_ticket_version,leader_epoch,runner_epoch,publication_witness_digest,created_at) VALUES(?,?,?,'pr',?,?,?,?,?,?)`, ref.Channel, ref.Project, ref.Ticket, pauseVersion, version+1, fence.LeaderEpoch, fence.RunnerEpoch, witness, created)
 		return err
 	})
 	if err != nil {
