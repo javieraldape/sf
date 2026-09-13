@@ -39,6 +39,7 @@ func (s *Store) IsPREndpointPaused(ctx context.Context, ticket Ticket) (bool, er
 }
 
 func authenticatePREndpoint(ctx context.Context, q interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }, ref domain.TicketRef, currentVersion uint64) (uint64, string, error) {
 	var endpoint string
@@ -65,6 +66,9 @@ func authenticatePREndpoint(ctx context.Context, q interface {
 	if err != nil || !found || witness != publication.WitnessDigest {
 		return 0, "", ErrPublicationEvidence
 	}
+	if err := loadLatestPublicationRebind(ctx, q, &publication); err != nil {
+		return 0, "", ErrPublicationEvidence
+	}
 	prURL := fmt.Sprintf("https://github.com/%s/%s/pull/%d", publication.PullRequest.Repository.Owner, publication.PullRequest.Repository.Name, publication.PullRequest.Number)
 	expected, _ := json.Marshal(map[string]string{"endpoint": "pr", "reason": "pr_opened", "pr_url": prURL, "head": publication.Candidate.Snapshot.HeadSHA, "witness_digest": witness})
 	if payload != string(expected) {
@@ -87,6 +91,7 @@ func (s *Store) PREndpointConsumed(ctx context.Context, ref domain.TicketRef) (b
 }
 
 func authenticatePREndpointResume(ctx context.Context, q interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }, ref domain.TicketRef, resumedVersion uint64) error {
 	if resumedVersion < 2 {
