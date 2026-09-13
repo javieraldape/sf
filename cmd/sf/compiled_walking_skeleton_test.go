@@ -49,6 +49,9 @@ func TestCompiledDevPREndpointWalkingSkeleton(t *testing.T) {
 }
 
 func TestCompiledDevNodePREndpointWalkingSkeleton(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("compiled Node acceptance requires the native macOS runtime")
+	}
 	// Fail at the actual runtime prerequisite rather than waiting for a ticket
 	// whose authenticated Node command cannot launch. This uses the production
 	// resolver/stager, not PATH or an unsandboxed substitute runtime.
