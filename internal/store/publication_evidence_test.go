@@ -462,7 +462,11 @@ func TestPREndpointSurvivesPausedLeadersAndPostResumeRecovery(t *testing.T) {
 		"wrong leader":        `UPDATE ticket_endpoint_consumptions SET leader_epoch=leader_epoch-1 WHERE channel=? AND project_id=? AND ticket_id=? AND endpoint='pr'`,
 	} {
 		t.Run(name, func(t *testing.T) {
-			path := filepath.Join(t.TempDir(), "endpoint-ci-tamper.sqlite")
+			root := t.TempDir()
+			if err := os.Chmod(root, 0700); err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(root, "endpoint-ci-tamper.sqlite")
 			if err := db.Backup(ctx, path); err != nil {
 				t.Fatal(err)
 			}
