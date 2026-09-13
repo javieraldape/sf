@@ -2,6 +2,18 @@
 
 ## Current truth
 
+- `2d71fb5359127e9bf38d1bce79bdfc4124c6f491` GitHub ticket-entry
+  `34746965195` PASS. Manifest SHA and downloaded binary checksums matched;
+  test SHA256 `a1866f2d9b776d78c878e1fb4a97e8f78611c5f37219efd97115c6d67fc1f6c2`.
+  Installed authenticated sandbox preflight ran once in session 54821:
+  PASS 5.75s, exit0, valid OAuth status shape, stdout present, stderr absent,
+  capture complete, Wait and owned group absence observed. No model prompt,
+  Store/gate launch or inference; only fixed preparation/auth-status probes.
+  Thus authenticated status works under the same private native profile.
+  Remaining permission-family failure is drafting-path-specific, not a proven
+  general authentication failure or a confirmed sandbox syscall denial.
+  Next is bounded static diagnosis of print startup, not another blind draft.
+
 - `0f72b93` GitHub ticket-entry `34746364160` PASS (CLI normal/race,
   authoring regressions, build, repository/docs/secret checks). Verified artifact
   SHA256: test `c0ca4dd1d387692827c83a6832f4776e42bd878ba0f405dc119f7f52951a46d7`,

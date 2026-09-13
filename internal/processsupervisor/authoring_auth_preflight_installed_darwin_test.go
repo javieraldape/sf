@@ -9,7 +9,7 @@ import (
 )
 
 // Run only from an externally verified CI-built artifact. Preparation performs
-// version/help/auth observation outside the profile, never inference. Its 25s
+// version/help/auth observation outside the profile, never inference. Its 60s
 // context and staging's separate 30s bound are not a combined wall-clock bound.
 // Snapshot checks have their own bounds; expired probe context prevents launch.
 // This single authenticated sandbox probe has no model, prompt, or print argv.

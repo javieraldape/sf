@@ -154,6 +154,56 @@ func TestAuthoringErrorFamilyAccessorIsClosed(t *testing.T) {
 	}
 }
 
+func TestAuthoringReportedOperationClosedFrames(t *testing.T) {
+	for name, category := range map[string]string{
+		"spawn": "spawn", "posix_spawn": "spawn", "pthread_create": "thread", "open": "open", "openat": "open", "read": "read", "write": "write", "mkdir": "mkdir", "mkdirat": "mkdir", "chdir": "cwd", "getcwd": "cwd", "mkdtemp": "temp", "mkstemp": "temp", "socket": "socket", "connect": "connect", "setpriority": "priority", "kill": "signal", "chmod": "metadata_write", "fchmod": "metadata_write", "chown": "metadata_write", "stat": "metadata_read", "lstat": "metadata_read", "access": "metadata_read", "realpath": "metadata_read", "readlink": "metadata_read", "rename": "file_change", "unlink": "file_change", "symlink": "file_change", "uv_cwd": "cwd", "uv_os_homedir": "home",
+	} {
+		for _, raw := range []string{"syscall: '" + name + "'", "\t syscall: \"" + name + "\",\r\n", "Error: " + name + " EPERM", "EPERM: operation not permitted, " + name, "Error: EPERM: operation not permitted, " + name + " '/private/secret-token'"} {
+			if classifyAuthoringOperation([]byte(raw), false) != category {
+				t.Fatal("closed operation frame rejected")
+			}
+			if classifyAuthoringOperation([]byte(raw), true) != "unclassified" {
+				t.Fatal("truncated operation classified")
+			}
+		}
+		err := &authoringRunError{diagnostic: AuthoringRunDiagnostic{Stage: "process_exit", CaptureKnown: true, ProcessReportedOperation: category}, cause: ErrUnclear}
+		if AuthoringRunDiagnostics(err).ProcessReportedOperation != category || !errors.Is(err, ErrUnclear) {
+			t.Fatal("operation metadata lost identity")
+		}
+		err.diagnostic.CaptureKnown = false
+		if AuthoringRunDiagnostics(err).ProcessReportedOperation != "" {
+			t.Fatal("unobserved operation exposed")
+		}
+	}
+	for _, test := range []struct{ raw, want string }{
+		{"syscall: 'spawn'\nspawn EPERM", "spawn"}, {"spawn EPERM\nopen EACCES", "ambiguous"},
+		{strings.Repeat(" ", (16<<10)-len("spawn EPERM")) + "spawn EPERM", "spawn"},
+		{strings.Repeat(" ", (16<<10)-len("spawn EPERM")+1) + "spawn EPERM", "unclassified"},
+		{"", "unclassified"}, {"spawn", "unclassified"}, {"EPERM: operation not permitted", "unclassified"},
+		{"/private/syscall: 'spawn'/secret", "unclassified"}, {"token=syscall: 'spawn'", "unclassified"},
+		{"syscall: 'spawn', secret", "unclassified"}, {"syscall: 'not_authored'", "unclassified"},
+		{"secret spawn EPERM", "unclassified"}, {"spawn EPERM secret", "unclassified"}, {"spawn ECONNREFUSED", "unclassified"},
+		{"EPERM: arbitrary message, open", "unclassified"}, {"spawn EPERM '/private/secret' extra", "unclassified"},
+		{"spawn EPERM 'secret\\path'", "unclassified"}, {"spawn EPERM ''", "unclassified"}, {"spawn EPERM '", "unclassified"},
+		{"EPERM: operation not permitted, open '", "unclassified"},
+		{"spawn EPERM '" + strings.Repeat("x", 1025) + "'", "unclassified"},
+		{"spawn EPERM\nopen EACCES\x00", "unclassified"}, {"spawn EPERM\x1b[31m", "unclassified"}, {"spawn EPERM é", "unclassified"},
+		{"spawn EPERM\x7f", "unclassified"},
+	} {
+		if got := classifyAuthoringOperation([]byte(test.raw), false); got != test.want {
+			t.Fatalf("closed operation got %s want %s", got, test.want)
+		}
+	}
+	err := &authoringRunError{diagnostic: AuthoringRunDiagnostic{Stage: "process_exit", CaptureKnown: true, ProcessReportedOperation: "secret-token"}, cause: errors.New("raw-secret")}
+	if AuthoringRunDiagnostics(err).ProcessReportedOperation != "unclassified" || err.Error() != "authoring run: process_exit" {
+		t.Fatal("arbitrary operation leaked")
+	}
+	err.diagnostic.Stage = "secret-token"
+	if AuthoringRunDiagnostics(err) != (AuthoringRunDiagnostic{Stage: "unknown"}) {
+		t.Fatal("unknown stage leaked operation")
+	}
+}
+
 func TestAuthoringGatedFailureDiagnostics(t *testing.T) {
 	for _, test := range []struct {
 		name, body, stage              string
@@ -162,6 +212,7 @@ func TestAuthoringGatedFailureDiagnostics(t *testing.T) {
 	}{
 		{"nonzero", "printf secret-token >&2; exit 7", "process_exit", 7, false, true, false, false},
 		{"option hint", `printf '%s\n' "error: unknown option '--safe-mode'" >&2; exit 1`, "process_exit", 1, false, true, false, false},
+		{"operation hint", `printf '%s\n' "syscall: 'spawn'," >&2; exit 1`, "process_exit", 1, false, true, false, false},
 		{"multiline permission", "printf '%s\\n' '" + strings.Repeat("x", 600) + "' 'EPERM' >&2; exit 1", "process_exit", 1, false, true, false, false},
 		{"malformed", "printf secret-token", "output_json", 0, true, false, false, false},
 		{"envelope", `printf '%s' '{"type":"result","subtype":"error","is_error":true}'`, "result_envelope", 0, true, false, false, false},
@@ -186,6 +237,13 @@ func TestAuthoringGatedFailureDiagnostics(t *testing.T) {
 			}
 			if d.ProcessReportedErrorFamily != wantFamily {
 				t.Fatal("post-wait error family did not match bounded capture")
+			}
+			wantOperation := "unclassified"
+			if test.name == "operation hint" {
+				wantOperation = "spawn"
+			}
+			if d.ProcessReportedOperation != wantOperation {
+				t.Fatal("post-wait operation did not match bounded capture")
 			}
 			if err == nil || d.Stage != test.stage || !d.ExitObserved || d.ExitCode != test.exit || d.Signal != 0 || !d.CaptureKnown || d.StdoutPresent != test.stdout || d.StderrPresent != test.stderr || d.StdoutTruncated != test.outCap || d.StderrTruncated != test.errCap {
 				t.Fatalf("incorrect bounded metadata: %+v", d)

@@ -4,6 +4,14 @@ Status: implementation approved on 2026-09-12; initial work from main `f632e81` 
 
 ## Current verification checkpoint
 
+- Commit `2d71fb5` passed GitHub ticket-entry `34746965195`. Its manifest-
+  verified installed authenticated sandbox preflight passed in 5.75s: fixed
+  auth status exited0 with valid OAuth shape, no stderr, complete capture,
+  and observed Wait/group absence. This used no model prompt or inference.
+  Authentication status therefore works inside the same authoring profile;
+  real drafting still fails and its print-specific cause remains unproven.
+  No production permissions were widened and no additional draft was run.
+
 - Diagnostic commit `0f72b93` passed GitHub ticket-entry `34746364160`.
   Its verified installed draft attempt ran once and failed in 7.19s:
   process_exit/exit1, no stdout, bounded stderr, option hint unclassified,
