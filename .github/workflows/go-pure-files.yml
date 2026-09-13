@@ -21,6 +21,13 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - name: Expose the setup toolchain at the approved repository-test path
+        run: |
+          set -eu
+          setup_go=$(command -v go)
+          sudo mkdir -p /usr/local/go/bin
+          sudo ln -sfn "$setup_go" /usr/local/go/bin/go
+          test "$(readlink /usr/local/go/bin/go)" = "$setup_go"
       - name: Closure and admission regressions
         run: go test -race -p 1 -count=1 ./internal/goclosure ./internal/executionpolicy ./internal/config ./internal/cli ./internal/localruntime
       - name: Real compiled Go gate
