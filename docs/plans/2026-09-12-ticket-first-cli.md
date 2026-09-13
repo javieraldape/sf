@@ -1,8 +1,16 @@
 # Ticket-first CLI, AI authoring and live activity
 
-Status: implementation approved on 2026-09-12; initial work from main `f632e81` merged through PR #11 at `638f231`. PR #12 merged follow-up repairs at `3dda60b`. Further diagnosis is on `fix/authoring-startup-classification`. Real AI authoring acceptance remains incomplete; merged source is not proof of working installed inference.
+Status: implementation approved on 2026-09-12; initial work from main `f632e81` merged through PR #11 at `638f231`. PR #12 merged follow-up repairs at `3dda60b`. Real draft and home-intent acceptance passed on `cc55929` on 2026-09-13. Final full regression and merging `fix/authoring-startup-classification` remain. See the [acceptance evidence](../reports/2026-09-13-authoring-runtime-acceptance.md).
 
 ## Current verification checkpoint
+
+- `cc55929` passed GitHub `34749449916` and the actual installed Claude
+  authoring harness (24.16s): typed draft and home-list intent, one launch
+  each, signed drain, durable result replay and no ticket creation. CI and
+  affected-host no-model ICU probes both reproduced old-profile enumeration
+  failure and candidate success, retaining outside-read/write/fork denial.
+  The historical failed attempts below are retained as diagnostic evidence,
+  not the current installed result. Full regression and merge remain pending.
 
 - Next candidate: policy v4 adds read-only access to the two fixed macOS
   timezone roots, not their parent directories. Exact-address disassembly

@@ -2,6 +2,19 @@
 
 ## Current truth
 
+- REAL AUTHORING ACCEPTANCE PASSED on `cc55929652b1462c4e173497c63e63df3ac2216d`.
+  GitHub `34749449916` PASS; normal push trigger resolved repeated dispatch
+  HTTP500/502 failures. Exact manifest/checksums verified before execution.
+  CI and affected-host no-model ICU probe both show baseline count=false,
+  candidate count=true, with outside read/write and fork denied in both.
+  Host probe PASS0.27s. Installed Claude2.1.263/Sonnet4.6 acceptance session68808
+  PASS24.16s: actual draft and home-intent completed, each one launch with
+  valid signed drain, replay returned stored results, isolated ticket inventory
+  remained empty. No automatic retry, live install/daemon/DB/ticket mutation.
+  Remaining: final full GitHub regression, pre-landing review, PR/merge and
+  honest journey evidence report. Connected CLI journey is synthetic, not a
+  timed human usability study or live factory-ticket run.
+
 - No-inference static crash isolation found the faulting instruction at
   unslid `0x102cf1580` (`brk #0xbb08`) reached from `0x102cefb98` after
   `_uenum_count`, immediately following `_ucal_openTimeZoneIDEnumeration`.
