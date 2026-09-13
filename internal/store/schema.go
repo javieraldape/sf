@@ -504,7 +504,7 @@ func sameForeignKeyColumns(actual, expected []foreignKeyColumn) bool {
 
 var requiredSchema = map[string][]string{
 	"ticket_execution_policies":                {"channel", "project_id", "ticket_id", "endpoint", "start_ticket_version", "created_at"},
-	"ticket_endpoint_consumptions":             {"channel", "project_id", "ticket_id", "endpoint", "paused_ticket_version", "consumed_ticket_version", "publication_witness_digest", "created_at"},
+	"ticket_endpoint_consumptions":             {"channel", "project_id", "ticket_id", "endpoint", "paused_ticket_version", "consumed_ticket_version", "leader_epoch", "runner_epoch", "publication_witness_digest", "created_at"},
 	"authoring_sessions":                       {"channel", "id", "purpose", "project_id", "capability", "auth_digest", "context_digest", "created_at"},
 	"authoring_turns":                          {"channel", "session_id", "turn_key", "turn", "claim", "state", "launch", "outcome", "result", "created_at", "finished_at"},
 	"postbuild_amendment_checkpoint_snapshots": {"channel", "project_id", "ticket_id", "amendment_transition_version", "ticket_version", "leader_epoch", "runner_epoch", "reviewer_attempt_id", "reviewer_attempt", "reviewer_phase", "reviewer_role", "command_semantic_key", "command_claim_epoch", "full_snapshot_digest", "implementation_digest", "companion_binding_digest", "binding_digest", "created_at"},

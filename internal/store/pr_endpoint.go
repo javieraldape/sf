@@ -15,7 +15,7 @@ const ExecutionEndpointPR = "pr"
 
 var migrationV63 = []string{
 	`CREATE TABLE ticket_execution_policies(channel TEXT NOT NULL,project_id TEXT NOT NULL,ticket_id TEXT NOT NULL,endpoint TEXT NOT NULL CHECK(endpoint='pr'),start_ticket_version INTEGER NOT NULL CHECK(start_ticket_version>1),created_at TEXT NOT NULL,PRIMARY KEY(channel,project_id,ticket_id),FOREIGN KEY(channel,project_id,ticket_id) REFERENCES tickets(channel,project_id,id))`,
-	`CREATE TABLE ticket_endpoint_consumptions(channel TEXT NOT NULL,project_id TEXT NOT NULL,ticket_id TEXT NOT NULL,endpoint TEXT NOT NULL CHECK(endpoint='pr'),paused_ticket_version INTEGER NOT NULL CHECK(paused_ticket_version>1),consumed_ticket_version INTEGER NOT NULL CHECK(consumed_ticket_version>paused_ticket_version),publication_witness_digest TEXT NOT NULL CHECK(length(publication_witness_digest)=71),created_at TEXT NOT NULL,PRIMARY KEY(channel,project_id,ticket_id,endpoint),FOREIGN KEY(channel,project_id,ticket_id) REFERENCES tickets(channel,project_id,id))`,
+	`CREATE TABLE ticket_endpoint_consumptions(channel TEXT NOT NULL,project_id TEXT NOT NULL,ticket_id TEXT NOT NULL,endpoint TEXT NOT NULL CHECK(endpoint='pr'),paused_ticket_version INTEGER NOT NULL CHECK(paused_ticket_version>1),consumed_ticket_version INTEGER NOT NULL CHECK(consumed_ticket_version>paused_ticket_version),leader_epoch INTEGER NOT NULL CHECK(leader_epoch>0),runner_epoch INTEGER NOT NULL CHECK(runner_epoch>0),publication_witness_digest TEXT NOT NULL CHECK(length(publication_witness_digest)=71),created_at TEXT NOT NULL,PRIMARY KEY(channel,project_id,ticket_id,endpoint),FOREIGN KEY(channel,project_id,ticket_id) REFERENCES tickets(channel,project_id,id))`,
 	`CREATE TRIGGER ticket_execution_policies_immutable_update BEFORE UPDATE ON ticket_execution_policies BEGIN SELECT RAISE(ABORT,'ticket execution policy is immutable'); END`,
 	`CREATE TRIGGER ticket_execution_policies_immutable_delete BEFORE DELETE ON ticket_execution_policies BEGIN SELECT RAISE(ABORT,'ticket execution policy is append-only'); END`,
 	`CREATE TRIGGER ticket_endpoint_consumptions_immutable_update BEFORE UPDATE ON ticket_endpoint_consumptions BEGIN SELECT RAISE(ABORT,'ticket endpoint consumption is immutable'); END`,
@@ -83,10 +83,20 @@ func authenticatePREndpointResume(ctx context.Context, q interface {
 		return ErrPublicationEvidence
 	}
 	var count int
-	if err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM ticket_endpoint_consumptions c JOIN events e ON e.channel=c.channel AND e.project_id=c.project_id AND e.ticket_id=c.ticket_id AND e.ticket_version=c.consumed_ticket_version WHERE c.channel=? AND c.project_id=? AND c.ticket_id=? AND c.endpoint='pr' AND c.paused_ticket_version=? AND c.consumed_ticket_version=? AND c.publication_witness_digest=? AND e.trigger='operator_resume' AND e.from_state='paused' AND e.to_state='waiting_ci'`, ref.Channel, ref.Project, ref.Ticket, pauseVersion, resumedVersion, witness).Scan(&count); err != nil || count != 1 {
+	if err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM ticket_endpoint_consumptions c JOIN events e ON e.channel=c.channel AND e.project_id=c.project_id AND e.ticket_id=c.ticket_id AND e.ticket_version=c.consumed_ticket_version WHERE c.channel=? AND c.project_id=? AND c.ticket_id=? AND c.endpoint='pr' AND c.paused_ticket_version=? AND c.consumed_ticket_version=? AND c.publication_witness_digest=? AND c.leader_epoch>0 AND c.runner_epoch>0 AND e.trigger='operator_resume' AND e.from_state='paused' AND e.to_state='waiting_ci'`, ref.Channel, ref.Project, ref.Ticket, pauseVersion, resumedVersion, witness).Scan(&count); err != nil || count != 1 {
 		return ErrPublicationEvidence
 	}
 	return nil
+}
+
+func prEndpointResumeFence(ctx context.Context, q interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}, ref domain.TicketRef, version uint64) (domain.Fence, error) {
+	var fence domain.Fence
+	if err := q.QueryRowContext(ctx, `SELECT leader_epoch,runner_epoch FROM ticket_endpoint_consumptions WHERE channel=? AND project_id=? AND ticket_id=? AND endpoint='pr' AND consumed_ticket_version=?`, ref.Channel, ref.Project, ref.Ticket, version).Scan(&fence.LeaderEpoch, &fence.RunnerEpoch); err != nil {
+		return domain.Fence{}, ErrPublicationEvidence
+	}
+	return fence, nil
 }
 
 // ResumePREndpoint consumes the one-shot first-PR handoff and resumes CI in
@@ -118,8 +128,9 @@ func (s *Store) ResumePREndpoint(ctx context.Context, ref domain.TicketRef, expe
 		if state != domain.StatePaused || resume != domain.StateWaitingCI || blocked != "pr_opened" || version != expected || runner != fence.RunnerEpoch {
 			return ErrStaleFence
 		}
-		if err := s.currentFence(ctx, conn, ref.Channel, version, runner, fence); err != nil {
-			return err
+		var leader uint64
+		if err := conn.QueryRowContext(ctx, `SELECT leader_epoch FROM daemon_instances WHERE channel=?`, ref.Channel).Scan(&leader); err != nil || leader != fence.LeaderEpoch {
+			return ErrStaleFence
 		}
 		if ok, err := hasUnconsumedPREndpoint(ctx, conn, ref); err != nil || !ok {
 			return ErrPublicationEvidence
@@ -143,7 +154,7 @@ func (s *Store) ResumePREndpoint(ctx context.Context, ref domain.TicketRef, expe
 		if _, err := conn.ExecContext(ctx, `INSERT INTO events(channel,project_id,ticket_id,ticket_version,trigger,from_state,to_state,payload,created_at) VALUES(?,?,?,?,?,?,?,?,?)`, ref.Channel, ref.Project, ref.Ticket, version+1, "operator_resume", domain.StatePaused, domain.StateWaitingCI, string(payload), created); err != nil {
 			return err
 		}
-		_, err := conn.ExecContext(ctx, `INSERT INTO ticket_endpoint_consumptions(channel,project_id,ticket_id,endpoint,paused_ticket_version,consumed_ticket_version,publication_witness_digest,created_at) VALUES(?,?,?,'pr',?,?,?,?)`, ref.Channel, ref.Project, ref.Ticket, pauseVersion, version+1, witness, created)
+		_, err := conn.ExecContext(ctx, `INSERT INTO ticket_endpoint_consumptions(channel,project_id,ticket_id,endpoint,paused_ticket_version,consumed_ticket_version,leader_epoch,runner_epoch,publication_witness_digest,created_at) VALUES(?,?,?,'pr',?,?,?,?,?,?)`, ref.Channel, ref.Project, ref.Ticket, pauseVersion, version+1, fence.LeaderEpoch, fence.RunnerEpoch, witness, created)
 		return err
 	})
 	if err != nil {

@@ -408,6 +408,50 @@ func TestPublishedCandidateAtomicallyStopsAtFirstPREndpointAndConsumesOnce(t *te
 	}
 }
 
+func TestPREndpointSurvivesPausedLeadersAndPostResumeRecovery(t *testing.T) {
+	db, ctx, ticket, fence := publicationLifecycleFixture(t)
+	if _, err := db.db.ExecContext(ctx, `INSERT INTO ticket_execution_policies(channel,project_id,ticket_id,endpoint,start_ticket_version,created_at) VALUES(?,?,?,'pr',2,?)`, ticket.Ref.Channel, ticket.Ref.Project, ticket.Ref.Ticket, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+		t.Fatal(err)
+	}
+	recordFixturePublication(t, db, ctx, ticket, fence)
+	if _, err := db.TransitionPublishedCandidate(ctx, Transition{Ref: ticket.Ref, ExpectedVersion: ticket.Version, From: domain.StatePublishing, To: domain.StateWaitingCI, Trigger: "effects_confirmed", Fence: fence}); err != nil {
+		t.Fatal(err)
+	}
+	paused, _ := db.Ticket(ctx, ticket.Ref)
+	leader := fence.LeaderEpoch
+	for i := 0; i < 2; i++ {
+		var err error
+		leader, err = db.AcquireLeader(ctx, domain.ChannelDev, fmt.Sprintf("endpoint-paused-%d", i))
+		if err != nil {
+			t.Fatal(err)
+		}
+		still, _ := db.Ticket(ctx, ticket.Ref)
+		if still.State != domain.StatePaused || still.Version != paused.Version {
+			t.Fatalf("restart resumed endpoint: %+v", still)
+		}
+	}
+	if _, _, err := db.ResumePREndpoint(ctx, ticket.Ref, paused.Version, fence); !errors.Is(err, ErrStaleFence) {
+		t.Fatalf("stale publication leader consumed endpoint: %v", err)
+	}
+	resumed, _, err := db.ResumePREndpoint(ctx, ticket.Ref, paused.Version, domain.Fence{LeaderEpoch: leader, RunnerEpoch: paused.RunnerEpoch})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.LoadPublishedCandidate(ctx, ticket.Ref); err != nil {
+		t.Fatalf("post-resume publication: %v", err)
+	}
+	nextLeader, err := db.AcquireLeader(ctx, domain.ChannelDev, "endpoint-resumed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := db.FenceRecoveredRunners(ctx, domain.ChannelDev, nextLeader); err != nil || changed != 1 {
+		t.Fatalf("recovery changed=%d err=%v", changed, err)
+	}
+	if _, err := db.LoadPublishedCandidate(ctx, ticket.Ref); err != nil {
+		t.Fatalf("post-recovery publication: %v (resumed=%+v)", err, resumed)
+	}
+}
+
 func TestWaitingCIPublicationReaderRequiresFenceAfterLeaderAcquisition(t *testing.T) {
 	db, ctx, ticket, fence := publicationLifecycleFixture(t)
 	recordFixturePublication(t, db, ctx, ticket, fence)

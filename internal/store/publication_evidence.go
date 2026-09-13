@@ -1919,6 +1919,7 @@ func (s *Store) LoadPublishedCandidate(ctx context.Context, ref domain.TicketRef
 	blockedPublishingReplay := false
 	blockedWaitingReplay := false
 	waitingPairRecovery := false
+	endpointWaitingReplay := false
 	if ticket.State == domain.StatePublishing && ticket.Version != value.CurrentTicketVersion {
 		if ticket.Version != value.CurrentTicketVersion+2 || ticket.RunnerEpoch != value.CurrentFence.RunnerEpoch {
 			return PublishedCandidateEvidence{}, ErrPublicationEvidence
@@ -1945,6 +1946,7 @@ func (s *Store) LoadPublishedCandidate(ctx context.Context, ref domain.TicketRef
 			// Ordinary publishing -> waiting_ci replay.
 		} else if ticket.Version == waitingVersion+2 && authenticatePREndpointResume(ctx, s.db, ref, ticket.Version) == nil {
 			semanticWaitingReplay = true
+			endpointWaitingReplay = true
 		} else if ticket.Version == waitingVersion+2 && authenticateBlockedPublicationResume(ctx, s.db, ref, waitingVersion+1, ticket.Version, domain.StateWaitingCI, domain.StateWaitingCI) == nil {
 			blockedWaitingReplay = true
 		} else if ticket.Version == waitingVersion+2 && authenticateSemanticPublicationResume(ctx, s.db, ref, waitingVersion+1, ticket.Version, domain.StateWaitingCI) == nil {
@@ -1961,7 +1963,8 @@ func (s *Store) LoadPublishedCandidate(ctx context.Context, ref domain.TicketRef
 		}
 		if !blockedWaitingReplay && !semanticWaitingReplay && waitingVersion <= ^uint64(0)-3 && ticket.Version >= waitingVersion+3 &&
 			(authenticateBlockedPublicationResume(ctx, s.db, ref, waitingVersion+1, waitingVersion+2, domain.StateWaitingCI, domain.StateWaitingCI) == nil ||
-				authenticateSemanticPublicationResume(ctx, s.db, ref, waitingVersion+1, waitingVersion+2, domain.StateWaitingCI) == nil) {
+				authenticateSemanticPublicationResume(ctx, s.db, ref, waitingVersion+1, waitingVersion+2, domain.StateWaitingCI) == nil ||
+				authenticatePREndpointResume(ctx, s.db, ref, waitingVersion+2) == nil) {
 			waitingPairRecovery = true
 		}
 	}
@@ -2001,8 +2004,17 @@ func (s *Store) LoadPublishedCandidate(ctx context.Context, ref domain.TicketRef
 		// chain and any signed runner-recovery rows to the live leader.
 	} else if waitingReplay {
 		baselineVersion, baselineRunner, baselineLeader := waitingVersion, value.CurrentFence.RunnerEpoch, value.CurrentFence.LeaderEpoch
-		if waitingPairRecovery {
+		if endpointWaitingReplay {
+			endpointFence, err := prEndpointResumeFence(ctx, s.db, ref, ticket.Version)
+			if err != nil {
+				return PublishedCandidateEvidence{}, err
+			}
+			baselineVersion, baselineRunner, baselineLeader = ticket.Version, endpointFence.RunnerEpoch, endpointFence.LeaderEpoch
+		} else if waitingPairRecovery {
 			baselineVersion += 2
+			if endpointFence, err := prEndpointResumeFence(ctx, s.db, ref, baselineVersion); err == nil {
+				baselineRunner, baselineLeader = endpointFence.RunnerEpoch, endpointFence.LeaderEpoch
+			}
 		}
 		if ticket.RunnerEpoch == baselineRunner {
 			if leader != value.CurrentFence.LeaderEpoch {
@@ -2020,6 +2032,9 @@ func (s *Store) LoadPublishedCandidate(ctx context.Context, ref domain.TicketRef
 		baselineVersion, baselineRunner, baselineLeader := waitingVersion, value.CurrentFence.RunnerEpoch, value.CurrentFence.LeaderEpoch
 		if waitingPairRecovery {
 			baselineVersion += 2
+			if endpointFence, fenceErr := prEndpointResumeFence(ctx, s.db, ref, baselineVersion); fenceErr == nil {
+				baselineRunner, baselineLeader = endpointFence.RunnerEpoch, endpointFence.LeaderEpoch
+			}
 		}
 		if err := validateRunnerRecoveryLedger(ctx, s.db, ref, baselineVersion, baselineRunner, baselineLeader, ticket.Version, ticket.RunnerEpoch, leader); err != nil {
 			return PublishedCandidateEvidence{}, err

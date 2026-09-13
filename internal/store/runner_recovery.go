@@ -1317,6 +1317,15 @@ func (s *Store) publicationRecoveryBaseline(ctx context.Context, conn *sql.Conn,
 	if err := loadLatestPublicationRebind(ctx, conn, &publication); err != nil {
 		return 0, false, err
 	}
+	if publication.CurrentTicketVersion <= ^uint64(0)-3 && version == publication.CurrentTicketVersion+3 {
+		if authenticatePREndpointResume(ctx, conn, ref, version) == nil {
+			fence, err := prEndpointResumeFence(ctx, conn, ref, version)
+			if err != nil || fence.RunnerEpoch != runner {
+				return 0, false, ErrPublicationEvidence
+			}
+			return fence.LeaderEpoch, true, nil
+		}
+	}
 	// An operator pause/take invalidates the runner atomically at stopping,
 	// then records drained->paused and resume as two ordinary ticket events.
 	// For waiting_ci that places the resumed endpoint four versions after the
