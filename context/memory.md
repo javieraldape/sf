@@ -2,6 +2,20 @@
 
 ## Current truth
 
+- 2026-09-13: the explicitly approved corrected draft attempt ran ONCE from
+  verified `c62b45d` binaries and failed after 7.79s: process_exit/exit 1,
+  no stdout, bounded stderr, unclassified hint, one launch, valid drain proof.
+  Home intent was not attempted. No further model attempts are authorized.
+  The bare-mode repair was not sufficient for real authoring acceptance.
+- A separate no-model native regression reproduced a private TMP alias bug
+  in GitHub `34742246978`: canonical control passed; raw symlink path failed
+  TMP file access after HOME access passed. This Mac's TMPDIR uses `/var`,
+  which symlinks to `/private/var`. `10cd088` canonicalizes returned TMP and
+  its environment entry together, keeping the same private-directory scope
+  and original cleanup. GitHub `34742638116` PASSED on exact `10cd088`:
+  both native path cases and Claude/Cursor utility cleanup tests passed.
+  Real authoring acceptance is still unproven; no further model call occurred.
+
 - Latest resume supersedes the pending-approval notes below. One newly approved
   draft diagnostic was used from verified `c376985` binaries: failed in 7.37s,
   process_exit/exit 1, no stdout, bounded stderr present, unclassified hint,

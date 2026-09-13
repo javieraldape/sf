@@ -4,6 +4,17 @@ Status: implementation approved on 2026-09-12; initial work from main `f632e81` 
 
 ## Current verification checkpoint
 
+- 2026-09-13: corrected `c62b45d` real draft attempt failed once in 7.79s,
+  exit 1/no stdout/bounded stderr/unclassified hint, one launch and valid
+  drain proof. No home turn or retry. Bare-mode correction was insufficient.
+  A no-model production-environment sandbox test then reproduced a separate
+  TMP alias bug: GitHub `34742246978` canonical control passed, symlinked
+  temporary path failed file access. `10cd088` normalizes TMP consistently
+  for environment/cwd/profile without widening access; `34742638116` passed
+  both native cases plus cleanup regressions and the full ticket-entry run.
+  Installed real acceptance on this new build has not run and needs a fresh
+  bounded-call authorization. No live installation or ticket mutation.
+
 - Source review found an independent documented auth-mode incompatibility:
   authoring combined `--bare` with subscription OAuth. Claude's
   [headless reference](https://code.claude.com/docs/en/headless) states bare
