@@ -1324,7 +1324,7 @@ func TestWorkerReconcilesLostCreateBeforePREndpointPause(t *testing.T) {
 	if got := f.github.MutationCount("pr_create"); got != 1 {
 		t.Fatalf("endpoint reconciliation replayed create %d times", got)
 	}
-	if replay, err := w.Run(f.ctx, f.ref, f.fence); err != nil || replay.State != domain.StatePaused || f.github.MutationCount("pr_create") != 1 {
+	if replay, err := w.Run(f.ctx, f.ref, f.fence); err != nil || replay.State != domain.StatePaused || replay.Version != paused.Version || f.github.MutationCount("pr_create") != 1 {
 		t.Fatalf("endpoint paused replay=%+v err=%v creates=%d", replay, err, f.github.MutationCount("pr_create"))
 	}
 }

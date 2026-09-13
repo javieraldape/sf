@@ -173,7 +173,8 @@ func TestCompiledCleanStateReadinessRefusalsAndOfflineStacks(t *testing.T) {
 				}
 			}
 			doctorOutput, doctorErr := run("doctor", "--json")
-			if doctorErr == nil || !strings.Contains(string(doctorOutput), `"code":"doctor_failed"`) ||
+			var doctorResponse api.Response
+			if doctorErr == nil || json.Unmarshal(doctorOutput, &doctorResponse) != nil || doctorResponse.OK || doctorResponse.Mutation.Attempted || !strings.Contains(string(doctorOutput), `"code":"doctor_failed"`) ||
 				!strings.Contains(string(doctorOutput), `"id":"gh_executable"`) ||
 				!strings.Contains(string(doctorOutput), `"id":"github_auth"`) ||
 				!strings.Contains(string(doctorOutput), `"auth","login","github"`) {
