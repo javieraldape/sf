@@ -38,6 +38,14 @@ func TestCompiledDevManualWalkingSkeleton(t *testing.T) {
 	compiledDevWalkingSkeleton(t, domain.MergeManual)
 }
 
+// TestCompiledDevPREndpointWalkingSkeleton proves the first-PR handoff is a
+// durable pause. The endpoint branch intentionally stops before CI observation,
+// review, ready, or merge effects; recovery is checked after a daemon restart.
+func TestCompiledDevPREndpointWalkingSkeleton(t *testing.T) {
+	t.Setenv("SF_TEST_UNTIL_PR", "1")
+	compiledDevWalkingSkeleton(t, domain.MergeGuarded)
+}
+
 func compiledDevWalkingSkeleton(t *testing.T, mergeMode domain.MergeMode) {
 	compiledDevWalkingSkeletonProfile(t, mergeMode, false)
 }
@@ -420,6 +428,9 @@ func compiledDevWalkingSkeletonConfigured(t *testing.T, mergeMode domain.MergeMo
 	submit := compiledWalkingSkeletonCLI(t, binary, home, "submit", ticketPath, "--project", "app", "--json")
 	ref := walkingSkeletonSubmittedRef(t, submit)
 	startArgs := []string{"start", string(ref.Ticket), "--json"}
+	if os.Getenv("SF_TEST_UNTIL_PR") == "1" {
+		startArgs = append(startArgs, "--until", "pr")
+	}
 	if live {
 		startArgs = append(startArgs, "--accept-cost-estimates")
 	}
@@ -436,6 +447,37 @@ func compiledDevWalkingSkeletonConfigured(t *testing.T, mergeMode domain.MergeMo
 			limit = 8 * time.Minute
 		}
 		return walkingSkeletonWaitStateBounded(t, readOnly, ref, want, github, bare, limit, &daemonOutput)
+	}
+	if os.Getenv("SF_TEST_UNTIL_PR") == "1" {
+		paused := wait(domain.StatePaused)
+		if paused.BlockedCode != "pr_opened" || paused.ResumeState != domain.StateWaitingCI {
+			t.Fatalf("PR endpoint pause=%+v", paused)
+		}
+		if github.MutationCount("pr_create") != 1 || github.MutationCount("pr_ready") != 0 || github.MutationCount("pr_merge") != 0 {
+			t.Fatalf("PR endpoint effects: create=%d ready=%d merge=%d", github.MutationCount("pr_create"), github.MutationCount("pr_ready"), github.MutationCount("pr_merge"))
+		}
+		before := paused.Version
+		stopDaemon()
+		if t.Failed() {
+			t.Fatal("refusing PR endpoint restart after failed assertions")
+		}
+		startDaemon()
+		daemonStopped = false
+		compiledWalkingSkeletonWaitSocket(t, paths.Socket, daemonDone, &daemonOutput, &daemonStopped)
+		status := compiledWalkingSkeletonCLI(t, binary, home, "status", string(ref.Ticket), "--json")
+		if !strings.Contains(string(status), `"state":"paused"`) || !strings.Contains(string(status), `"blocked_code":"pr_opened"`) || !strings.Contains(string(status), "continue_after_pr") {
+			t.Fatalf("restarted PR endpoint status=%s", status)
+		}
+		readOnly.Close()
+		readOnly, err = store.OpenReadOnly(context.Background(), paths.Database)
+		if err != nil {
+			t.Fatal(err)
+		}
+		current, err := readOnly.Ticket(context.Background(), ref)
+		if err != nil || current.State != domain.StatePaused || current.Version != before {
+			t.Fatalf("restart changed PR endpoint pause: before=%d current=%+v err=%v", before, current, err)
+		}
+		return
 	}
 	waitingCI := wait(domain.StateWaitingCI)
 	verification, err := readOnly.RecoverableVerification(context.Background(), ref)
