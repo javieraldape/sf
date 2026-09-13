@@ -2,6 +2,34 @@
 
 ## Current truth
 
+- No-inference static crash isolation found the faulting instruction at
+  unslid `0x102cf1580` (`brk #0xbb08`) reached from `0x102cefb98` after
+  `_uenum_count`, immediately following `_ucal_openTimeZoneIDEnumeration`.
+  Exact pinned Mach-O imports establish the ICU APIs (not guessed from strings).
+  Exact-PID kernel denial at03:08:52.855620 names fixed OS timezone root
+  `/private/var/db/timezone` and `icutz44l.dat`; earlier zoneinfo reads denied.
+  Host timezone root is root:wheel0555; root-owned symlinks stay in its tz tree.
+  This strongly localizes failed ICU timezone initialization, pending native
+  baseline/candidate reproduction. Apple XNU hardcodes FOUNDATION for certain
+  unrecoverable user breakpoints: namespace alone does NOT identify Foundation.
+  Generic Foundation probe was held before any edit. Delivery lead/child now
+  preparing a no-model ICU fixture and narrow read-only OS timezone candidate;
+  no global var access, fork permission, raw logs or further inference.
+
+- `1a64406519f131c2fd5c152fe4d0fbde4ff463e0` passed exact-head GitHub
+  `34748868420` (earlier dispatch errors resolved). Manifest and hashes verified:
+  test `b22ead9f98184216d1a304a27420bbb4cd79cac475693ae31ac8854982ffd8cf`,
+  gate `70d8685b4042adaebe64e9c284cd84e8a9baa6bd744bb27325e2b583637f841d`.
+  One installed draft in session11337 FAILED7.14s: process_exit, exit=-1,
+  signal9, no captured stdout/stderr, one launch, valid signed drain; no
+  home or retry. Real drafting is NOT repaired. Matching macOS crash report
+  for PID74259 records EXC_BREAKPOINT/SIGKILL, FOUNDATION termination code1.
+  Exact-PID short-window logs show fork/shared-memory/file/preference denials;
+  no denial is yet proved causal. Normal SF timeout/record failure paths do
+  not match the reported stage. Do not relax process-fork or broad filesystem
+  access; next is bounded non-inference crash isolation. No live install,
+  daemon/DB/ticket mutation or raw provider/log contents were exposed.
+
 - Candidate repair in progress: official Claude environment documentation
   (`https://code.claude.com/docs/en/env-vars`) documents macOS internal temp
   default `/tmp`, separately controlled by `CLAUDE_CODE_TMPDIR`, with a

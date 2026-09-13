@@ -6,6 +6,8 @@ on:
   pull_request:
     paths:
       - internal/cli/**
+      - internal/authoring/**
+      - internal/processsupervisor/**
       - scripts/sf
       - .github/workflows/ticket-entry.yml
   workflow_dispatch:
@@ -38,8 +40,13 @@ jobs:
           scripts/sf version --json | jq -eS '.data | select(.channel == "dev")' > "$RUNNER_TEMP/sf-short.json"
           bin/sf-dev version --json | jq -eS '.data | select(.channel == "dev")' > "$RUNNER_TEMP/sf-dev.json"
           cmp "$RUNNER_TEMP/sf-short.json" "$RUNNER_TEMP/sf-dev.json"
+      - name: Build no-model system timezone probe
+        run: /usr/bin/clang -std=c11 -Wall -Wextra -Werror -O2 internal/processsupervisor/testdata/authoring_icu_probe.c -o "$RUNNER_TEMP/authoring-icu-probe"
       - name: Fast no-model authoring regression
-        run: go test -p 1 -count=1 ./internal/authoring ./internal/processsupervisor ./internal/daemon ./internal/store -run '^TestAuthoring' -v
+        run: |
+          export SF_TEST_AUTHORING_ICU_HELPER="$RUNNER_TEMP/authoring-icu-probe"
+          export SF_TEST_AUTHORING_ICU_HELPER_SHA256="$(shasum -a 256 "$SF_TEST_AUTHORING_ICU_HELPER" | cut -d ' ' -f 1)"
+          go test -p 1 -count=1 ./internal/authoring ./internal/processsupervisor ./internal/daemon ./internal/store -run '^TestAuthoring' -v
       - name: Build opt-in authoring acceptance artifact
         env:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
@@ -49,12 +56,13 @@ jobs:
           mkdir -p "$artifact_dir"
           go test -c -o "$artifact_dir/processsupervisor.test" ./internal/processsupervisor
           cp bin/sf-dev "$artifact_dir/sf-dev"
+          cp "$RUNNER_TEMP/authoring-icu-probe" "$artifact_dir/authoring-icu-probe"
           checkout_sha=$(git rev-parse HEAD)
           {
             printf 'github_sha=%s\n' "$GITHUB_SHA"
             printf 'checkout_sha=%s\n' "$checkout_sha"
             printf 'pr_head_sha=%s\n' "$PR_HEAD_SHA"
-            (cd "$artifact_dir" && shasum -a 256 processsupervisor.test sf-dev)
+            (cd "$artifact_dir" && shasum -a 256 processsupervisor.test sf-dev authoring-icu-probe)
           } > "$artifact_dir/MANIFEST"
       - name: Upload opt-in authoring acceptance artifact
         uses: actions/upload-artifact@v4

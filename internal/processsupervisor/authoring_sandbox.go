@@ -28,6 +28,10 @@ func authoringSandbox(stage, executable, home, temporary string) (string, error)
 	for _, path := range []string{"/System", "/usr/lib", "/usr/share", "/Library/Apple", "/private/etc", "/dev", stage, home, temporary} {
 		profile += "(allow file-read* (subpath " + seatbeltString(path) + "))\n"
 	}
+	// System ICU timezone data only; no write or broader /var/db capability.
+	for _, path := range []string{"/private/var/db/timezone", "/var/db/timezone"} {
+		profile += "(allow file-read* (subpath " + seatbeltString(path) + "))\n"
+	}
 	for _, path := range []string{stage, home, temporary} {
 		for _, ancestor := range seatbeltAncestors(path) {
 			profile += "(allow file-read* (literal " + seatbeltString(ancestor) + "))\n"

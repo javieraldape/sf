@@ -4,6 +4,22 @@ Status: implementation approved on 2026-09-12; initial work from main `f632e81` 
 
 ## Current verification checkpoint
 
+- Next candidate: policy v4 adds read-only access to the two fixed macOS
+  timezone roots, not their parent directories. Exact-address disassembly
+  traces the installed trap to ICU timezone enumeration; the matching PID
+  was denied its system ICU timezone data. A CI-built no-model helper will
+  compare old/new profiles and require outside reads/writes and fork denial.
+  Neither this source change nor a passing helper substitutes for installed
+  draft/home acceptance. No new model call has run for this candidate.
+
+- `1a64406` passed exact-head GitHub run `34748868420`. Its manifest-verified
+  installed draft failed once in7.14s with signal9, no captured output, one
+  launch and valid signed drain; home was not attempted. The matching macOS
+  crash report records FOUNDATION termination code1. Sandbox denials exist
+  in the same PID/window but their causal relationship is not established.
+  The private-temp change is not demonstrated to fix real drafting. Keep
+  permissions unchanged while isolating the native startup failure.
+
 - Candidate private-temp repair: authoring now binds `CLAUDE_CODE_TMPDIR`
   to its existing canonical private temp directory, with policy v3 rejecting
   old bindings. Claude documents that its internal temp defaults to `/tmp`

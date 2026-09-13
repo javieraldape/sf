@@ -66,7 +66,9 @@ func TestAuthoringSubscriptionArgvAndPolicyBinding(t *testing.T) {
 	oldDigest := contracts.AuthoringDigest([]byte(oldPolicy + schemas))
 	v2Policy := strings.Replace(strings.Replace(oldPolicy, "/v1:", "/v2:", 1), ":bare:", ":subscription-oauth:", 1)
 	v2Digest := contracts.AuthoringDigest([]byte(v2Policy + schemas))
-	newPolicy := strings.Replace(v2Policy, "/v2:", "/v3:", 1) + ":private-internal-tmp"
+	v3Policy := strings.Replace(v2Policy, "/v2:", "/v3:", 1) + ":private-internal-tmp"
+	v3Digest := contracts.AuthoringDigest([]byte(v3Policy + schemas))
+	newPolicy := strings.Replace(v3Policy, "/v3:", "/v4:", 1) + ":system-timezone-read"
 	if authoringPolicyDigest() == oldDigest || authoringPolicyDigest() != contracts.AuthoringDigest([]byte(newPolicy+schemas)) {
 		t.Fatal("subscription policy was not immutably versioned")
 	}
@@ -85,6 +87,12 @@ func TestAuthoringSubscriptionArgvAndPolicyBinding(t *testing.T) {
 	s.authoringStages[claim.Identity.Model] = stale
 	if _, _, err := s.acquireAuthoring(claim); !errors.Is(err, ErrUnclear) {
 		t.Fatal("matching old capability and claim bypassed current private temp policy")
+	}
+	claim.PolicyDigest = v3Digest
+	stale.policyDigest = v3Digest
+	s.authoringStages[claim.Identity.Model] = stale
+	if _, _, err := s.acquireAuthoring(claim); !errors.Is(err, ErrUnclear) {
+		t.Fatal("matching v3 capability and claim bypassed current timezone policy")
 	}
 }
 
