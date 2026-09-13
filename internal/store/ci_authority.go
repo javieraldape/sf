@@ -677,6 +677,13 @@ func loadCICurrentPublicationAt(ctx context.Context, q ciQuery, ref domain.Ticke
 		if fenceErr != nil {
 			return PublishedCandidateEvidence{}, fenceErr
 		}
+		var prematureObservations, prematureTransitions int
+		if err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM ci_observations WHERE channel=? AND project_id=? AND ticket_id=? AND observed_ticket_version<?`, ref.Channel, ref.Project, ref.Ticket, waitingVersion+2).Scan(&prematureObservations); err != nil || prematureObservations != 0 {
+			return PublishedCandidateEvidence{}, ErrPublicationEvidence
+		}
+		if err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM ci_transition_evidence WHERE channel=? AND project_id=? AND ticket_id=? AND ticket_version<=?`, ref.Channel, ref.Project, ref.Ticket, waitingVersion+2).Scan(&prematureTransitions); err != nil || prematureTransitions != 0 {
+			return PublishedCandidateEvidence{}, ErrPublicationEvidence
+		}
 		baselineVersion, baselineFence = waitingVersion+2, endpointFence
 	}
 	if state != string(domain.StateWaitingCI) || runner < baselineFence.RunnerEpoch || (runner == baselineFence.RunnerEpoch && leader != baselineFence.LeaderEpoch) {

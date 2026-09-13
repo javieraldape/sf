@@ -456,6 +456,37 @@ func TestPREndpointSurvivesPausedLeadersAndPostResumeRecovery(t *testing.T) {
 	if _, err := loadCICurrentPublication(ctx, db.db, ticket.Ref); err != nil {
 		t.Fatalf("post-resume CI publication: %v", err)
 	}
+	for name, statement := range map[string]string{
+		"missing consumption": `DELETE FROM ticket_endpoint_consumptions WHERE channel=? AND project_id=? AND ticket_id=? AND endpoint='pr'`,
+		"wrong leader":        `UPDATE ticket_endpoint_consumptions SET leader_epoch=leader_epoch-1 WHERE channel=? AND project_id=? AND ticket_id=? AND endpoint='pr'`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "endpoint-ci-tamper.sqlite")
+			if err := db.Backup(ctx, path); err != nil {
+				t.Fatal(err)
+			}
+			mutant, err := Open(ctx, path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer mutant.Close()
+			trigger := "ticket_endpoint_consumptions_immutable_update"
+			if name == "missing consumption" {
+				trigger = "ticket_endpoint_consumptions_immutable_delete"
+			}
+			if _, err := mutant.db.ExecContext(ctx, `DROP TRIGGER `+trigger); err != nil {
+				t.Fatal(err)
+			}
+			if result, err := mutant.db.ExecContext(ctx, statement, ticket.Ref.Channel, ticket.Ref.Project, ticket.Ref.Ticket); err != nil {
+				t.Fatal(err)
+			} else if changed, _ := result.RowsAffected(); changed != 1 {
+				t.Fatalf("tampered endpoint consumptions=%d", changed)
+			}
+			if _, err := loadCICurrentPublication(ctx, mutant.db, ticket.Ref); err == nil {
+				t.Fatal("counterfeit endpoint continuation admitted CI")
+			}
+		})
+	}
 	nextLeader, err := db.AcquireLeader(ctx, domain.ChannelDev, "endpoint-resumed")
 	if err != nil {
 		t.Fatal(err)
