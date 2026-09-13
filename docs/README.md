@@ -10,6 +10,10 @@
 - [`product-brief.md`](product-brief.md): user, outcome, and scope.
 - [`architecture.md`](architecture.md): current architecture and safety truth.
 - [`git-flow.md`](git-flow.md): repository contribution policy.
+- [`../CONTRIBUTING.md`](../CONTRIBUTING.md): source-build contribution and
+  evidence guidance.
+- [`../SECURITY.md`](../SECURITY.md): private vulnerability reporting and
+  credential-safe diagnostics.
 - [`releases.md`](releases.md): stable/dev build identity and the current local
   candidate-build contract.
 - [`plans/`](plans/): approved formal plan, verification plan, normative state
