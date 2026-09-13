@@ -2,6 +2,20 @@
 
 ## Current truth
 
+- Latest resume supersedes the pending-approval notes below. One newly approved
+  draft diagnostic was used from verified `c376985` binaries: failed in 7.37s,
+  process_exit/exit 1, no stdout, bounded stderr present, unclassified hint,
+  one launch and valid drain proof. Home intent remains unattempted; no more
+  inference attempts are covered by that grant. API/billing occurrence unknown.
+- Test-only no-model preflight `70b2d1c21226a5aaed9b51eb06a633d293542b99`
+  passed GitHub ticket-entry `34739161854`. Verified CI artifact then passed
+  installed Darwin version/help sandbox preflight in 7.04s: both exit 0,
+  expected shapes, no stderr/truncation, Wait and group absence observed.
+  Empty private HOME/TMP, no credentials, no prompt/model, no live state.
+  This isolates basic native sandbox initialization as working, not the
+  authenticated print/schema drafting path. Exact drafting failure is unknown.
+  Follow-up branch is pushed; no new PR merge or installation occurred.
+
 - Full follow-up GitHub baseline `34737028195` PASSED all 31 jobs on
   `096fc010d65fdae1e6b0ee9bb6e7dd3c03f5c8ed`. The repaired recovery race
   scenario passed all three cases (same 287.11s, new leader 362.54s, synced

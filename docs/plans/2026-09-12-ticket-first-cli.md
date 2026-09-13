@@ -4,6 +4,17 @@ Status: implementation approved on 2026-09-12; initial work from main `f632e81` 
 
 ## Current verification checkpoint
 
+- Latest approved diagnostic attempt was used once from `c376985`: failure
+  in 7.37s, exit 1, stdout absent, bounded stderr present, hint unclassified,
+  one launch and valid drain proof. API-request count remains unknown.
+  Home intent remains unused. The earlier pending-approval status is historical.
+- No-model native preflight `70b2d1c` passed GitHub `34739161854`; its verified
+  CI-built installed test passed in 7.04s. Both fixed version/help invocations
+  succeed inside the production authoring sandbox with empty private HOME/TMP,
+  no credentials, no stderr and observed process-group absence. This narrows
+  the unknown failure to the drafting path/authenticated environment, not basic
+  sandbox startup. No extra model attempt, installation or live mutation.
+
 - Full follow-up baseline `34737028195` passed all 31 jobs on `096fc01`,
   including all three prepared-amendment recovery race cases. This supersedes
   the earlier failing `f97d415` baseline below. The fixture repair changes only
