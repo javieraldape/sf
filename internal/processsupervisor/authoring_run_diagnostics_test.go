@@ -213,7 +213,7 @@ func TestAuthoringReportedPathLexicalCategories(t *testing.T) {
 		{tmp + "/settings.json", "private_tmp", "settings"}, {stage + "/managed-settings.json", "runtime", "managed_settings"},
 		{home + "/CLAUDE.md", "private_home", "instructions"}, {home + "-lookalike/file", "outside", "other"},
 		{"/System/file", "system", "other"}, {"/usr/lib/file", "system", "other"}, {"/usr/share/file", "system", "other"}, {"/Library/Apple/file", "system", "other"}, {"/private/etc/file", "system", "other"},
-		{"/usr/library/file", "outside", "other"}, {"/outside/stdin", "outside", "other"}, {"/dev/null", "dev", "null"}, {"/dev/zero", "dev", "zero"}, {"/dev/random", "dev", "random"}, {"/dev/urandom", "dev", "urandom"}, {"/dev/stdin", "dev", "stdin"}, {"/dev/stdout", "dev", "stdout"}, {"/dev/stderr", "dev", "stderr"}, {"/dev/tty", "dev", "tty"}, {"/dev/fd/0", "dev", "stdin"}, {"/dev/fd/1", "dev", "stdout"}, {"/dev/fd/2", "dev", "stderr"}, {"/dev/fd/3", "dev", "other"}, {"/dev/stdin/child", "dev", "other"},
+		{"/usr/library/file", "usr_other", "other"}, {"/outside/stdin", "outside", "other"}, {"/dev/null", "dev", "null"}, {"/dev/zero", "dev", "zero"}, {"/dev/random", "dev", "random"}, {"/dev/urandom", "dev", "urandom"}, {"/dev/stdin", "dev", "stdin"}, {"/dev/stdout", "dev", "stdout"}, {"/dev/stderr", "dev", "stderr"}, {"/dev/tty", "dev", "tty"}, {"/dev/fd/0", "dev", "stdin"}, {"/dev/fd/1", "dev", "stdout"}, {"/dev/fd/2", "dev", "stderr"}, {"/dev/fd/3", "dev", "other"}, {"/dev/stdin/child", "dev", "other"},
 	} {
 		for _, raw := range []string{metadata(test.path), "EACCES: permission denied, openat '" + test.path + "'", "Error: EPERM: operation not permitted, open '" + test.path + "'", "EPERM: operation not permitted, open \"" + test.path + "\"", "open EPERM\npath: \"" + test.path + "\""} {
 			root, name := classify(raw)
@@ -256,15 +256,48 @@ func TestAuthoringReportedPathLexicalCategories(t *testing.T) {
 	}
 }
 
+func TestAuthoringReportedPathFallbacksAndAliases(t *testing.T) {
+	const home, tmp, stage = "/private/var/launch/home", "/private/var/launch/home/tmp", "/private/tmp/runtime"
+	for _, test := range []struct{ path, root, name string }{
+		{home + "/settings.json", "private_home", "settings"}, {tmp + "/session.log", "private_tmp", "log_file"}, {stage + "/file.lock", "runtime", "lock_file"},
+		{"/var/launch/home", "private_home_alias", "other"}, {"/var/launch/home/tmp/id.pid", "private_tmp_alias", "pid_file"}, {"/tmp/runtime/data.json", "runtime_alias", "json_file"},
+		{"/var/launch/home-lookalike/data.json", "os_var", "json_file"}, {"/tmp/runtime-lookalike/file", "global_tmp", "other"},
+		{"/tmp", "global_tmp", "other"}, {"/private/tmp/file", "global_tmp", "other"}, {"/var/file", "os_var", "other"}, {"/private/var/file", "os_var", "other"},
+		{"/Users/person/file", "user_tree", "other"}, {"/Library/file", "system_library", "other"}, {"/usr/bin/file", "usr_other", "other"}, {"/bin/file", "system_bin", "other"}, {"/sbin/file", "system_bin", "other"}, {"/etc/file", "etc_alias", "other"},
+		{"/System/file", "system", "other"}, {"/Library/Apple/file", "system", "other"}, {"/usr/lib/file", "system", "other"}, {"/usr/share/file", "system", "other"}, {"/private/etc/file", "system", "other"},
+		{"/tmpx/file", "outside", "other"}, {"/private/variable/file", "outside", "other"}, {"/UsersOther/file", "outside", "other"}, {"/LibraryOther/file", "outside", "other"}, {"/usrOther/file", "outside", "other"}, {"/binary/file", "outside", "other"}, {"/etcetera/file", "outside", "other"},
+		{"/Library/Keychains/System.keychain", "system_library", "system_trust"}, {"/Library/Keychains/System.keychain-db", "system_library", "system_trust"}, {"/System/Library/Keychains/SystemRootCertificates.keychain", "system", "system_trust"},
+		{"/outside/System.keychain", "outside", "system_trust"}, {"/outside/System.keychain.json", "outside", "json_file"}, {"/outside/.claude.json", "outside", "claude_config"}, {"/outside/settings.json", "outside", "settings"}, {"/outside/managed-settings.json", "outside", "managed_settings"}, {"/outside/CLAUDE.md", "outside", "instructions"},
+		{"/outside/dir.json/plain", "outside", "other"}, {"/outside/file.LOG", "outside", "other"}, {"/outside/stdout", "outside", "other"}, {"/dev/stdout", "dev", "stdout"},
+	} {
+		raw := "Error: EPERM: operation not permitted, open '" + test.path + "'"
+		a, b := classifyAuthoringPath([]byte(raw), false, home, tmp, stage)
+		if a != test.root || b != test.name {
+			t.Fatal("incorrect lexical fallback or suffix precedence")
+		}
+	}
+	for _, path := range []string{"/var/launch/home/../escape", "/tmp/runtime//file", "/var/launch/./home/file", "/tmp/runtime/\\escape"} {
+		a, b := classifyAuthoringPath([]byte("open EPERM\npath: '"+path+"'"), false, home, tmp, stage)
+		if a != "unclassified" || b != "unclassified" {
+			t.Fatal("lexical alias escape accepted")
+		}
+	}
+	// Aliases are spelling reports only: two spellings remain distinct paths.
+	a, b := classifyAuthoringPath([]byte("open EPERM\npath: '"+home+"/file'\npath: '/var/launch/home/file'"), false, home, tmp, stage)
+	if a != "ambiguous" || b != "ambiguous" {
+		t.Fatal("alias spellings were resolved or collapsed")
+	}
+}
+
 func TestAuthoringReportedPathAccessorPrivacy(t *testing.T) {
 	err := &authoringRunError{diagnostic: AuthoringRunDiagnostic{Stage: "process_exit", CaptureKnown: true}, cause: errors.New("secret-path")}
-	for _, root := range []string{"private_home", "private_tmp", "runtime", "system", "dev", "outside", "ambiguous", "unclassified"} {
+	for _, root := range []string{"private_home", "private_tmp", "runtime", "private_home_alias", "private_tmp_alias", "runtime_alias", "system", "dev", "global_tmp", "os_var", "user_tree", "system_library", "usr_other", "system_bin", "etc_alias", "outside", "ambiguous", "unclassified"} {
 		err.diagnostic.ProcessReportedPathRoot = root
 		if AuthoringRunDiagnostics(err).ProcessReportedPathRoot != root {
 			t.Fatal("known root clamped")
 		}
 	}
-	for _, name := range []string{"null", "zero", "random", "urandom", "stdin", "stdout", "stderr", "tty", "claude_config", "settings", "managed_settings", "instructions", "other", "ambiguous", "unclassified"} {
+	for _, name := range []string{"null", "zero", "random", "urandom", "stdin", "stdout", "stderr", "tty", "claude_config", "settings", "managed_settings", "instructions", "system_trust", "log_file", "lock_file", "pid_file", "json_file", "other", "ambiguous", "unclassified"} {
 		err.diagnostic.ProcessReportedPathName = name
 		if AuthoringRunDiagnostics(err).ProcessReportedPathName != name {
 			t.Fatal("known path name clamped")

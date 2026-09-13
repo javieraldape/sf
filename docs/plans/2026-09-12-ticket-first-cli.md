@@ -4,6 +4,20 @@ Status: implementation approved on 2026-09-12; initial work from main `f632e81` 
 
 ## Current verification checkpoint
 
+- Candidate private-temp repair: authoring now binds `CLAUDE_CODE_TMPDIR`
+  to its existing canonical private temp directory, with policy v3 rejecting
+  old bindings. Claude documents that its internal temp defaults to `/tmp`
+  on macOS independently of ordinary `TMPDIR`. No sandbox permission is
+  expanded. GitHub and real installed acceptance are still required before
+  calling this the observed drafting fix. [Environment reference](https://code.claude.com/docs/en/env-vars).
+
+- `ea54e26` passed GitHub `34748358632`. Native no-model evidence shows
+  stdout/stderr reopen is denied, while stdin reopen succeeds. However the
+  one installed target-classifying attempt failed with outside/other rather
+  than a device target (7.05s, permission/open, signed drain, no home/retry).
+  The device hypothesis is not corroborated; no permissions are changed.
+  The exact private-path/system/temp cause is still unproven.
+
 - Operation diagnostic `b6f53aa` passed exact-head GitHub `34747741534`.
   One verified installed draft failed in7.06s with permission/open reported
   categories, no stdout, bounded stderr and a valid signed drain. No home

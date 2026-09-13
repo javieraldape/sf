@@ -188,6 +188,37 @@ func TestAuthoringAuthenticatedPreflightSourceBoundary(t *testing.T) {
 	}
 }
 
+func TestAuthoringAuthenticatedPreflightPrivateTempParity(t *testing.T) {
+	for _, path := range []string{"authoring.go", "authoring_auth_preflight_installed_darwin_test.go"} {
+		file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+		if err != nil {
+			t.Fatal("authoring environment source unavailable")
+		}
+		matches := 0
+		ast.Inspect(file, func(node ast.Node) bool {
+			call, ok := node.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			identifier, ok := call.Fun.(*ast.Ident)
+			if !ok || identifier.Name != "append" {
+				return true
+			}
+			var out bytes.Buffer
+			if format.Node(&out, token.NewFileSet(), call) != nil {
+				t.Fatal("environment expression unavailable")
+			}
+			if out.String() == `append(env, "MAX_STRUCTURED_OUTPUT_RETRIES=1", "CLAUDE_CODE_TMPDIR="+tmp)` {
+				matches++
+			}
+			return true
+		})
+		if matches != 1 {
+			t.Fatal("authenticated preflight must share fixed private internal temp environment")
+		}
+	}
+}
+
 func TestAuthoringSandboxPreflightSyntheticCaptureAndDrain(t *testing.T) {
 	for _, test := range []struct {
 		name, body string

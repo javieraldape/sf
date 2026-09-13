@@ -2,6 +2,29 @@
 
 ## Current truth
 
+- Candidate repair in progress: official Claude environment documentation
+  (`https://code.claude.com/docs/en/env-vars`) documents macOS internal temp
+  default `/tmp`, separately controlled by `CLAUDE_CODE_TMPDIR`, with a
+  per-UID child directory. Pinned binary contains that variable/literal.
+  SF supplied ordinary TMPDIR only. Bind authoring-only internal temp to the
+  already canonical private tmp and version policy v3; no global directory
+  grant or shared execution change. This is a documented containment mismatch,
+  not yet proof of the observed outside/other failure's exact path. Next exact
+  CI/native/installed result must determine whether it repairs real drafting.
+
+- `ea54e26` CI `34748358632` PASS. Native descriptor probe: stdin/fd0
+  reopen succeeds; stdout/stderr/fd1/fd2 reopen fails with permission. This
+  proves a profile property, NOT the installed drafting cause. Verified artifact
+  test SHA256 `47984e012c5eb7fdfb59291c5139388be0b92af9cea19c352393313b559f2e3b`,
+  gate `86495b1c1fe44ce4ccb64c6200675e25234bd903de067f195311ac415b3c7c78`.
+  One target-classifying installed draft, session46451, FAIL7.05s:
+  permission/open, lexical root=outside,name=other, exit1/no stdout/bounded
+  stderr, one launch and valid signed drain. No home/retry. Therefore no
+  installed evidence supports a stdio allowance; keep profile unchanged.
+  Gate FD3 is NOT closed before exec (read-only gate pipe at EOF), contrary
+  to a suggested assumption; no code change made. Next is coarse outside-root
+  classification/static provider temp/trust-path research, never raw paths.
+
 - Exact `b6f53aa` replacement CI `34747741534` PASS. Artifact manifest and
   checksums verified: test `07d4ccdc7dd8ad4ba01cf4ae714909fcf81d51a21ac36d94689d4d4a7a192db6`,
   gate `10a877ed840e5aa9bce75003d68a4fd58a0b6fc41a5b3f0da9d055695bbc5832`.

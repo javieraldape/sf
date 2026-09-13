@@ -121,7 +121,7 @@ func (s *Supervisor) RunAuthoring(ctx context.Context, claim contracts.Authoring
 	args := append(append([]string{"__provider_gate"}, prefix...), providerArgs...)
 	cmd := exec.Command(self, args...)
 	cmd.Dir = tmp
-	cmd.Env = append(env, "MAX_STRUCTURED_OUTPUT_RETRIES=1")
+	cmd.Env = append(env, "MAX_STRUCTURED_OUTPUT_RETRIES=1", "CLAUDE_CODE_TMPDIR="+tmp)
 	cmd.Stdin = bytes.NewReader(stdin)
 	cmd.ExtraFiles = []*os.File{read}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}

@@ -69,12 +69,12 @@ func AuthoringRunDiagnostics(err error) AuthoringRunDiagnostic {
 				d.ProcessReportedOperation = "unclassified"
 			}
 			switch d.ProcessReportedPathRoot {
-			case "private_home", "private_tmp", "runtime", "system", "dev", "outside", "ambiguous", "unclassified":
+			case "private_home", "private_tmp", "runtime", "private_home_alias", "private_tmp_alias", "runtime_alias", "system", "dev", "global_tmp", "os_var", "user_tree", "system_library", "usr_other", "system_bin", "etc_alias", "outside", "ambiguous", "unclassified":
 			default:
 				d.ProcessReportedPathRoot = "unclassified"
 			}
 			switch d.ProcessReportedPathName {
-			case "null", "zero", "random", "urandom", "stdin", "stdout", "stderr", "tty", "claude_config", "settings", "managed_settings", "instructions", "other", "ambiguous", "unclassified":
+			case "null", "zero", "random", "urandom", "stdin", "stdout", "stderr", "tty", "claude_config", "settings", "managed_settings", "instructions", "system_trust", "log_file", "lock_file", "pid_file", "json_file", "other", "ambiguous", "unclassified":
 			default:
 				d.ProcessReportedPathName = "unclassified"
 			}
@@ -302,6 +302,17 @@ func classifyAuthoringPath(raw []byte, truncated bool, home, temporary, runtimeR
 		if (selected == root.path || strings.HasPrefix(selected, root.path+"/")) && len(root.path) > longest {
 			rootCategory, longest = root.category, len(root.path)
 		}
+		// Recognize only these literal alternate spellings of known launch
+		// roots. This is not symlink resolution or a physical-location claim.
+		alias := ""
+		for _, base := range []string{"/private/var", "/private/tmp"} {
+			if root.path == base || strings.HasPrefix(root.path, base+"/") {
+				alias = strings.TrimPrefix(root.path, "/private")
+			}
+		}
+		if alias != "" && (selected == alias || strings.HasPrefix(selected, alias+"/")) && len(alias) > longest {
+			rootCategory, longest = root.category+"_alias", len(alias)
+		}
 	}
 	if longest == 0 {
 		for _, root := range []string{"/System", "/usr/lib", "/usr/share", "/Library/Apple", "/private/etc"} {
@@ -311,6 +322,18 @@ func classifyAuthoringPath(raw []byte, truncated bool, home, temporary, runtimeR
 		}
 		if selected == "/dev" || strings.HasPrefix(selected, "/dev/") {
 			rootCategory = "dev"
+		}
+		if rootCategory == "outside" {
+			for _, root := range []struct{ path, category string }{
+				{"/tmp", "global_tmp"}, {"/private/tmp", "global_tmp"},
+				{"/var", "os_var"}, {"/private/var", "os_var"}, {"/Users", "user_tree"},
+				{"/Library", "system_library"}, {"/usr", "usr_other"},
+				{"/bin", "system_bin"}, {"/sbin", "system_bin"}, {"/etc", "etc_alias"},
+			} {
+				if selected == root.path || strings.HasPrefix(selected, root.path+"/") {
+					rootCategory = root.category
+				}
+			}
 		}
 	}
 	name := "other"
@@ -341,6 +364,14 @@ func classifyAuthoringPath(raw []byte, truncated bool, home, temporary, runtimeR
 			name = "managed_settings"
 		case "CLAUDE.md":
 			name = "instructions"
+		case "System.keychain", "System.keychain-db", "SystemRootCertificates.keychain":
+			name = "system_trust"
+		default:
+			for _, suffix := range []struct{ extension, category string }{{".log", "log_file"}, {".lock", "lock_file"}, {".pid", "pid_file"}, {".json", "json_file"}} {
+				if strings.HasSuffix(selected, suffix.extension) {
+					name = suffix.category
+				}
+			}
 		}
 	}
 	return rootCategory, name

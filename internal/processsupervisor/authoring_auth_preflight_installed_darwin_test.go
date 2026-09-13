@@ -61,7 +61,7 @@ func TestInstalledClaudeAuthoringAuthenticatedSandboxPreflight(t *testing.T) {
 		t.Fatal("auth preflight stage=environment")
 	}
 	cleanup = clean
-	env = append(env, "MAX_STRUCTURED_OUTPUT_RETRIES=1")
+	env = append(env, "MAX_STRUCTURED_OUTPUT_RETRIES=1", "CLAUDE_CODE_TMPDIR="+tmp)
 	home := ""
 	for _, value := range env {
 		if strings.HasPrefix(value, "HOME=") {
