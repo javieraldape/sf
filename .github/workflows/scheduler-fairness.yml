@@ -17,8 +17,17 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - name: Expose approved repository-test toolchain
+        run: |
+          set -eu
+          setup_go=$(command -v go)
+          sudo mkdir -p /usr/local/go/bin
+          sudo ln -sfn "$setup_go" /usr/local/go/bin/go
+          test "$(readlink /usr/local/go/bin/go)" = "$setup_go"
       - name: Fairness, concurrency, and control regression suites
         run: go test -race -p 1 -count=1 ./internal/workflowruntime ./internal/codexprovider
+      - name: Production worker configuration
+        run: go test -p 1 -count=1 ./cmd/sf -run '^TestWorkflowWorkerCountIsBoundedAndOptIn$'
       - name: Prove old scheduler starves its sibling
         run: |
           cp internal/workflowruntime/scheduler.go "$RUNNER_TEMP/scheduler-fixed.go"
@@ -36,3 +45,20 @@ jobs:
           go vet ./internal/workflowruntime ./internal/codexprovider
           scripts/repo-check
           scripts/secret-scan
+      - name: Build validated pilot bundle
+        run: |
+          make build-dev COMMIT="$(git rev-parse HEAD)" DEV_VERSION=0.1.0-dev.scheduler-fairness
+          (cd bin && shasum -a 256 sf-dev sf-git-exec-dev sf-git-credential-dev sf-ssh-dev github_known_hosts) > bin/SHA256SUMS
+          git rev-parse HEAD > bin/COMMIT
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scheduler-fairness-macos-arm64
+          path: |
+            bin/sf-dev
+            bin/sf-git-exec-dev
+            bin/sf-git-credential-dev
+            bin/sf-ssh-dev
+            bin/github_known_hosts
+            bin/SHA256SUMS
+            bin/COMMIT
+          if-no-files-found: error
