@@ -204,6 +204,85 @@ func TestAuthoringReportedOperationClosedFrames(t *testing.T) {
 	}
 }
 
+func TestAuthoringReportedPathLexicalCategories(t *testing.T) {
+	const home, tmp, stage = "/private/test-home", "/private/test-home/tmp", "/private/runtime"
+	classify := func(raw string) (string, string) { return classifyAuthoringPath([]byte(raw), false, home, tmp, stage) }
+	metadata := func(path string) string { return "open EPERM\npath: '" + path + "'," }
+	for _, test := range []struct{ path, root, name string }{
+		{home, "private_home", "other"}, {home + "/.claude.json", "private_home", "claude_config"},
+		{tmp + "/settings.json", "private_tmp", "settings"}, {stage + "/managed-settings.json", "runtime", "managed_settings"},
+		{home + "/CLAUDE.md", "private_home", "instructions"}, {home + "-lookalike/file", "outside", "other"},
+		{"/System/file", "system", "other"}, {"/usr/lib/file", "system", "other"}, {"/usr/share/file", "system", "other"}, {"/Library/Apple/file", "system", "other"}, {"/private/etc/file", "system", "other"},
+		{"/usr/library/file", "outside", "other"}, {"/outside/stdin", "outside", "other"}, {"/dev/null", "dev", "null"}, {"/dev/zero", "dev", "zero"}, {"/dev/random", "dev", "random"}, {"/dev/urandom", "dev", "urandom"}, {"/dev/stdin", "dev", "stdin"}, {"/dev/stdout", "dev", "stdout"}, {"/dev/stderr", "dev", "stderr"}, {"/dev/tty", "dev", "tty"}, {"/dev/fd/0", "dev", "stdin"}, {"/dev/fd/1", "dev", "stdout"}, {"/dev/fd/2", "dev", "stderr"}, {"/dev/fd/3", "dev", "other"}, {"/dev/stdin/child", "dev", "other"},
+	} {
+		for _, raw := range []string{metadata(test.path), "EACCES: permission denied, openat '" + test.path + "'", "Error: EPERM: operation not permitted, open '" + test.path + "'", "EPERM: operation not permitted, open \"" + test.path + "\"", "open EPERM\npath: \"" + test.path + "\""} {
+			root, name := classify(raw)
+			if root != test.root || name != test.name {
+				t.Fatal("incorrect closed lexical path categories")
+			}
+			if a, b := classifyAuthoringPath([]byte(raw), true, home, tmp, stage); a != "unclassified" || b != "unclassified" {
+				t.Fatal("truncated path classified")
+			}
+		}
+	}
+	for _, raw := range []string{
+		"path: '/dev/stdin'", "read EPERM\npath: '/dev/stdin'", "open ENOENT\npath: '/dev/stdin'",
+		"open EPERM\n/private/path: '/dev/stdin'", "open EPERM\ntoken=path: '/dev/stdin'",
+		"open EPERM\npath: '", "open EPERM\npath: ''", "open EPERM\npath: '/dev/stdin' extra",
+		"open EPERM\npath: '/dev/stdin',,", "EPERM: operation not permitted, open '",
+		metadata("relative"), metadata("file:///dev/stdin"), metadata("/dev/../stdin"), metadata("/dev/./stdin"), metadata("//dev/stdin"), metadata("/dev//stdin"), metadata("/dev/stdin/"), metadata("/dev/sta\\din"), metadata("/dev/sta\"din"), metadata("/" + strings.Repeat("x", 1024)),
+		metadata("/dev/stdin") + "\x00", metadata("/dev/stdin") + "\x1b[31m", metadata("/dev/stdin") + "é", strings.Repeat(" ", 16<<10) + metadata("/dev/stdin"),
+		metadata("/dev/stdin") + "\npath: '/dev/stdout'\npath: '",
+	} {
+		if a, b := classify(raw); a != "unclassified" || b != "unclassified" {
+			t.Fatal("malformed or unrelated reported path classified")
+		}
+	}
+	for _, raw := range []string{metadata(home+"/one") + "\npath: '" + home + "/two'", metadata("/dev/stdin") + "\npath: '/dev/fd/0'"} {
+		if a, b := classify(raw); a != "ambiguous" || b != "ambiguous" {
+			t.Fatal("distinct paths collapsed to same category")
+		}
+	}
+	if a, b := classify(metadata("/dev/stdin") + "\npath: '/dev/stdin'"); a != "dev" || b != "stdin" {
+		t.Fatal("repeated identical path became ambiguous")
+	}
+	for _, invalid := range []string{"", "/", "relative", "/private/../home", "/private//home", "/private/home/", "/private/ho\\me"} {
+		if a, b := classifyAuthoringPath([]byte(metadata("/dev/stdin")), false, invalid, tmp, stage); a != "unclassified" || b != "unclassified" {
+			t.Fatal("invalid known root accepted")
+		}
+	}
+	if a, b := classifyAuthoringPath([]byte(metadata("/dev/stdin")), false, home, home, stage); a != "unclassified" || b != "unclassified" {
+		t.Fatal("ambiguous known roots accepted")
+	}
+}
+
+func TestAuthoringReportedPathAccessorPrivacy(t *testing.T) {
+	err := &authoringRunError{diagnostic: AuthoringRunDiagnostic{Stage: "process_exit", CaptureKnown: true}, cause: errors.New("secret-path")}
+	for _, root := range []string{"private_home", "private_tmp", "runtime", "system", "dev", "outside", "ambiguous", "unclassified"} {
+		err.diagnostic.ProcessReportedPathRoot = root
+		if AuthoringRunDiagnostics(err).ProcessReportedPathRoot != root {
+			t.Fatal("known root clamped")
+		}
+	}
+	for _, name := range []string{"null", "zero", "random", "urandom", "stdin", "stdout", "stderr", "tty", "claude_config", "settings", "managed_settings", "instructions", "other", "ambiguous", "unclassified"} {
+		err.diagnostic.ProcessReportedPathName = name
+		if AuthoringRunDiagnostics(err).ProcessReportedPathName != name {
+			t.Fatal("known path name clamped")
+		}
+	}
+	err.diagnostic.ProcessReportedPathRoot = "/secret/path"
+	err.diagnostic.ProcessReportedPathName = "secret-name"
+	d := AuthoringRunDiagnostics(err)
+	if d.ProcessReportedPathRoot != "unclassified" || d.ProcessReportedPathName != "unclassified" || err.Error() != "authoring run: process_exit" {
+		t.Fatal("unbounded reported path leaked")
+	}
+	err.diagnostic.CaptureKnown = false
+	d = AuthoringRunDiagnostics(err)
+	if d.ProcessReportedPathRoot != "" || d.ProcessReportedPathName != "" {
+		t.Fatal("unobserved path reported")
+	}
+}
+
 func TestAuthoringGatedFailureDiagnostics(t *testing.T) {
 	for _, test := range []struct {
 		name, body, stage              string
@@ -213,6 +292,7 @@ func TestAuthoringGatedFailureDiagnostics(t *testing.T) {
 		{"nonzero", "printf secret-token >&2; exit 7", "process_exit", 7, false, true, false, false},
 		{"option hint", `printf '%s\n' "error: unknown option '--safe-mode'" >&2; exit 1`, "process_exit", 1, false, true, false, false},
 		{"operation hint", `printf '%s\n' "syscall: 'spawn'," >&2; exit 1`, "process_exit", 1, false, true, false, false},
+		{"path hint", `printf '%s\n' "Error: EPERM: operation not permitted, open '/dev/stdin'" >&2; exit 1`, "process_exit", 1, false, true, false, false},
 		{"multiline permission", "printf '%s\\n' '" + strings.Repeat("x", 600) + "' 'EPERM' >&2; exit 1", "process_exit", 1, false, true, false, false},
 		{"malformed", "printf secret-token", "output_json", 0, true, false, false, false},
 		{"envelope", `printf '%s' '{"type":"result","subtype":"error","is_error":true}'`, "result_envelope", 0, true, false, false, false},
@@ -232,7 +312,7 @@ func TestAuthoringGatedFailureDiagnostics(t *testing.T) {
 				t.Fatal("post-wait advisory hint did not match bounded capture")
 			}
 			wantFamily := "unclassified"
-			if test.name == "multiline permission" {
+			if test.name == "multiline permission" || test.name == "path hint" {
 				wantFamily = "permission"
 			}
 			if d.ProcessReportedErrorFamily != wantFamily {
@@ -242,8 +322,18 @@ func TestAuthoringGatedFailureDiagnostics(t *testing.T) {
 			if test.name == "operation hint" {
 				wantOperation = "spawn"
 			}
+			if test.name == "path hint" {
+				wantOperation = "open"
+			}
 			if d.ProcessReportedOperation != wantOperation {
 				t.Fatal("post-wait operation did not match bounded capture")
+			}
+			wantRoot, wantName := "unclassified", "unclassified"
+			if test.name == "path hint" {
+				wantRoot, wantName = "dev", "stdin"
+			}
+			if d.ProcessReportedPathRoot != wantRoot || d.ProcessReportedPathName != wantName {
+				t.Fatal("post-wait path categories did not match bounded capture")
 			}
 			if err == nil || d.Stage != test.stage || !d.ExitObserved || d.ExitCode != test.exit || d.Signal != 0 || !d.CaptureKnown || d.StdoutPresent != test.stdout || d.StderrPresent != test.stderr || d.StdoutTruncated != test.outCap || d.StderrTruncated != test.errCap {
 				t.Fatalf("incorrect bounded metadata: %+v", d)

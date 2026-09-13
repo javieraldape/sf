@@ -25,6 +25,9 @@ type AuthoringRunDiagnostic struct {
 	ProcessReportedErrorFamily string
 	// ProcessReportedOperation is a spoofable reported frame, not syscall or origin proof.
 	ProcessReportedOperation string
+	// Path categories are lexical reports, not physical location or causal proof.
+	ProcessReportedPathRoot string
+	ProcessReportedPathName string
 }
 
 type authoringRunError struct {
@@ -47,6 +50,8 @@ func AuthoringRunDiagnostics(err error) AuthoringRunDiagnostic {
 			d.ProcessReportedHint = ""
 			d.ProcessReportedErrorFamily = ""
 			d.ProcessReportedOperation = ""
+			d.ProcessReportedPathRoot = ""
+			d.ProcessReportedPathName = ""
 		} else {
 			switch d.ProcessReportedHint {
 			case "unknown_option", "invalid_option_value":
@@ -62,6 +67,16 @@ func AuthoringRunDiagnostics(err error) AuthoringRunDiagnostic {
 			case "spawn", "thread", "open", "read", "write", "mkdir", "cwd", "temp", "socket", "connect", "priority", "signal", "metadata_write", "metadata_read", "file_change", "home", "ambiguous", "unclassified":
 			default:
 				d.ProcessReportedOperation = "unclassified"
+			}
+			switch d.ProcessReportedPathRoot {
+			case "private_home", "private_tmp", "runtime", "system", "dev", "outside", "ambiguous", "unclassified":
+			default:
+				d.ProcessReportedPathRoot = "unclassified"
+			}
+			switch d.ProcessReportedPathName {
+			case "null", "zero", "random", "urandom", "stdin", "stdout", "stderr", "tty", "claude_config", "settings", "managed_settings", "instructions", "other", "ambiguous", "unclassified":
+			default:
+				d.ProcessReportedPathName = "unclassified"
 			}
 		}
 		switch d.Stage {
@@ -189,6 +204,146 @@ func classifyAuthoringOperation(raw []byte, truncated bool) string {
 		}
 	}
 	return result
+}
+
+// classifyAuthoringPath reports lexical categories only, without filesystem
+// inspection. Standalone path metadata is gated by whole-capture permission/open
+// reports; that does not associate frames or prove the path caused any failure.
+// Canonical known roots come from the launch, never from reported content.
+func classifyAuthoringPath(raw []byte, truncated bool, home, temporary, runtimeRoot string) (string, string) {
+	unknown := func() (string, string) { return "unclassified", "unclassified" }
+	if truncated || len(raw) == 0 || len(raw) > 16<<10 {
+		return unknown()
+	}
+	for _, b := range raw {
+		if (b < 0x20 && b != '\n' && b != '\r' && b != '\t') || b > 0x7e {
+			return unknown()
+		}
+	}
+	clean := func(path string) bool {
+		if len(path) == 0 || len(path) > 1024 || path[0] != '/' {
+			return false
+		}
+		for _, b := range []byte(path) {
+			if b < 0x20 || b > 0x7e || b == '\\' || b == '\'' || b == '"' {
+				return false
+			}
+		}
+		if path == "/" {
+			return true
+		}
+		for _, component := range strings.Split(path[1:], "/") {
+			if component == "" || component == "." || component == ".." {
+				return false
+			}
+		}
+		return true
+	}
+	roots := []struct{ path, category string }{{home, "private_home"}, {temporary, "private_tmp"}, {runtimeRoot, "runtime"}}
+	for _, root := range roots {
+		if !clean(root.path) || root.path == "/" {
+			return unknown()
+		}
+	}
+	if home == temporary || home == runtimeRoot || temporary == runtimeRoot {
+		return unknown()
+	}
+	metadataAllowed := classifyAuthoringErrorFamily(raw, false) == "permission" && classifyAuthoringOperation(raw, false) == "open"
+	quoted := func(value string) (string, bool) {
+		if len(value) < 3 || (value[0] != '\'' && value[0] != '"') || value[len(value)-1] != value[0] {
+			return "", false
+		}
+		path := value[1 : len(value)-1]
+		return path, clean(path)
+	}
+	selected := ""
+	conflicting := false
+	for _, rawLine := range strings.Split(string(raw), "\n") {
+		line := strings.Trim(rawLine, " \t\r")
+		value, recognized := "", false
+		if strings.HasPrefix(line, "path:") {
+			if !metadataAllowed {
+				return unknown()
+			}
+			recognized = true
+			if !strings.HasPrefix(line, "path: ") {
+				return unknown()
+			}
+			value = strings.TrimSuffix(strings.TrimPrefix(line, "path: "), ",")
+		} else {
+			line = strings.TrimPrefix(line, "Error: ")
+			for _, prefix := range []string{"EPERM: operation not permitted, open ", "EPERM: operation not permitted, openat ", "EACCES: permission denied, open ", "EACCES: permission denied, openat "} {
+				if strings.HasPrefix(line, prefix) {
+					value, recognized = strings.TrimPrefix(line, prefix), true
+					break
+				}
+			}
+		}
+		if !recognized {
+			continue
+		}
+		path, ok := quoted(value)
+		if !ok {
+			return unknown()
+		}
+		if selected != "" && selected != path {
+			conflicting = true
+		}
+		selected = path
+	}
+	if conflicting {
+		return "ambiguous", "ambiguous"
+	}
+	if selected == "" {
+		return unknown()
+	}
+	rootCategory, longest := "outside", 0
+	for _, root := range roots {
+		if (selected == root.path || strings.HasPrefix(selected, root.path+"/")) && len(root.path) > longest {
+			rootCategory, longest = root.category, len(root.path)
+		}
+	}
+	if longest == 0 {
+		for _, root := range []string{"/System", "/usr/lib", "/usr/share", "/Library/Apple", "/private/etc"} {
+			if selected == root || strings.HasPrefix(selected, root+"/") {
+				rootCategory = "system"
+			}
+		}
+		if selected == "/dev" || strings.HasPrefix(selected, "/dev/") {
+			rootCategory = "dev"
+		}
+	}
+	name := "other"
+	switch selected {
+	case "/dev/null":
+		name = "null"
+	case "/dev/zero":
+		name = "zero"
+	case "/dev/random":
+		name = "random"
+	case "/dev/urandom":
+		name = "urandom"
+	case "/dev/stdin", "/dev/fd/0":
+		name = "stdin"
+	case "/dev/stdout", "/dev/fd/1":
+		name = "stdout"
+	case "/dev/stderr", "/dev/fd/2":
+		name = "stderr"
+	case "/dev/tty":
+		name = "tty"
+	default:
+		switch selected[strings.LastIndex(selected, "/")+1:] {
+		case ".claude.json":
+			name = "claude_config"
+		case "settings.json":
+			name = "settings"
+		case "managed-settings.json":
+			name = "managed_settings"
+		case "CLAUDE.md":
+			name = "instructions"
+		}
+	}
+	return rootCategory, name
 }
 
 // classifyAuthoringStderr recognizes only conventional synthetic option-error

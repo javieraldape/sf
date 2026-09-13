@@ -4,6 +4,14 @@ Status: implementation approved on 2026-09-12; initial work from main `f632e81` 
 
 ## Current verification checkpoint
 
+- Operation diagnostic `b6f53aa` passed exact-head GitHub `34747741534`.
+  One verified installed draft failed in7.06s with permission/open reported
+  categories, no stdout, bounded stderr and a valid signed drain. No home
+  or retry followed. Authentication status still passes separately; the
+  remaining print-path file-opening cause needs evidence, not permission
+  broadening. Earlier dispatch `34747492649` selected stale `2d71fb5` and
+  was not used for the instrumented draft.
+
 - Commit `2d71fb5` passed GitHub ticket-entry `34746965195`. Its manifest-
   verified installed authenticated sandbox preflight passed in 5.75s: fixed
   auth status exited0 with valid OAuth shape, no stderr, complete capture,

@@ -4,6 +4,7 @@ package processsupervisor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -58,6 +59,7 @@ func TestAuthoringSandboxNativeHelperBoundary(t *testing.T) {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "/usr/bin/sandbox-exec", "-p", profile, self, "-test.run", "^TestAuthoringSandboxNativeHelperBoundary$")
 	cmd.Dir = "/"
+	cmd.Stdin = strings.NewReader("fixed-native-descriptor-probe")
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.WaitDelay = 2 * time.Second
 	cmd.Cancel = func() error {
@@ -80,6 +82,13 @@ func TestAuthoringSandboxNativeHelperBoundary(t *testing.T) {
 	if !strings.Contains(string(out), "authoring-sandbox-ok") {
 		t.Fatalf("native authoring sandbox helper did not prove all boundaries: %q", out)
 	}
+	// Observational, no-model evidence only; these facts do not establish which
+	// descriptor operation the installed provider performs during drafting.
+	for _, line := range strings.Split(string(out), "\n") {
+		if strings.HasPrefix(line, "authoring-descriptor-probe ") {
+			t.Log(line)
+		}
+	}
 }
 
 func runAuthoringSandboxHelper(t *testing.T) {
@@ -94,6 +103,23 @@ func runAuthoringSandboxHelper(t *testing.T) {
 	}
 	if output, err := exec.Command("/bin/echo", "child").CombinedOutput(); err == nil {
 		t.Fatalf("child exec unexpectedly succeeded: %q", output)
+	}
+	for _, probe := range []struct {
+		name, path string
+		flags      int
+	}{
+		{"stdin", "/dev/stdin", os.O_RDONLY},
+		{"stdout", "/dev/stdout", os.O_WRONLY},
+		{"stderr", "/dev/stderr", os.O_WRONLY},
+		{"fd0", "/dev/fd/0", os.O_RDONLY},
+		{"fd1", "/dev/fd/1", os.O_WRONLY},
+		{"fd2", "/dev/fd/2", os.O_WRONLY},
+	} {
+		file, err := os.OpenFile(probe.path, probe.flags, 0)
+		if err == nil && file.Close() != nil {
+			t.Fatal("native descriptor probe close failed")
+		}
+		fmt.Fprintf(os.Stdout, "authoring-descriptor-probe name=%s open=%t permission=%t\n", probe.name, err == nil, errors.Is(err, syscall.EPERM) || errors.Is(err, syscall.EACCES))
 	}
 	fmt.Fprintln(os.Stdout, "authoring-sandbox-ok")
 }

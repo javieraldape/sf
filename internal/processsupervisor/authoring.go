@@ -247,6 +247,7 @@ func (s *Supervisor) RunAuthoring(ctx context.Context, claim contracts.Authoring
 	diagnostic.ProcessReportedHint = classifyAuthoringStderr(stderr.Bytes(), stderr.truncated)
 	diagnostic.ProcessReportedErrorFamily = classifyAuthoringErrorFamily(stderr.Bytes(), stderr.truncated)
 	diagnostic.ProcessReportedOperation = classifyAuthoringOperation(stderr.Bytes(), stderr.truncated)
+	diagnostic.ProcessReportedPathRoot, diagnostic.ProcessReportedPathName = classifyAuthoringPath(stderr.Bytes(), stderr.truncated, home, tmp, trusted.stagedDir)
 	if e := s.proveGone(r); e != nil {
 		diagnostic.Stage = "drain"
 		cleanSafe, releaseSafe = false, false

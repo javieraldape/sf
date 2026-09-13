@@ -2,6 +2,25 @@
 
 ## Current truth
 
+- Exact `b6f53aa` replacement CI `34747741534` PASS. Artifact manifest and
+  checksums verified: test `07d4ccdc7dd8ad4ba01cf4ae714909fcf81d51a21ac36d94689d4d4a7a192db6`,
+  gate `10a877ed840e5aa9bce75003d68a4fd58a0b6fc41a5b3f0da9d055695bbc5832`.
+  One installed instrumented draft ran in session45533 and failed7.06s:
+  process_exit/exit1, no stdout, bounded stderr, permission family, reported
+  operation=open, one launch, valid signed drain. No home turn or retry.
+  This narrows the report to file opening, but does not prove the actual
+  syscall/path/sandbox cause or API/billing occurrence. Root is investigating
+  fixed print-path file access before any permission change; profile untouched.
+
+- Operation diagnostic `b6f53aa` is frozen/reviewed by delivery lead, coding
+  child, root and independent Luna. It adds closed reported operation frames
+  only, after stable capture; no permission/argv/drain changes. The first
+  post-push workflow dispatch `34747492649` unexpectedly selected prior
+  `2d71fb5`; manifest verification caught this and no draft used that artifact.
+  Remote branch was independently confirmed at `b6f53aa`; replacement run
+  `34747741534` was verified at that exact SHA before waiting. Do not count
+  the stale run as operation-classifier coverage.
+
 - `2d71fb5359127e9bf38d1bce79bdfc4124c6f491` GitHub ticket-entry
   `34746965195` PASS. Manifest SHA and downloaded binary checksums matched;
   test SHA256 `a1866f2d9b776d78c878e1fb4a97e8f78611c5f37219efd97115c6d67fc1f6c2`.
