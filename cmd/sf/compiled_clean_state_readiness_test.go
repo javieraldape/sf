@@ -47,7 +47,7 @@ func TestCompiledCleanStateReadinessRefusalsAndOfflineStacks(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			env := []string{"HOME=" + home, "PATH=/usr/bin:/bin:/usr/sbin:/sbin", "TMPDIR=" + root, "LANG=C", "CODEX_HOME=" + filepath.Join(root, "codex"), "GH_CONFIG_DIR=" + filepath.Join(root, "gh"), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null", "GH_TOKEN=seeded-clean-state-secret"}
+			env := []string{"HOME=" + home, "PATH=/usr/bin:/bin:/usr/sbin:/sbin", "TMPDIR=" + root, "LANG=C", "CODEX_HOME=" + filepath.Join(root, "codex"), "GH_CONFIG_DIR=" + filepath.Join(root, "gh"), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null"}
 			run := func(args ...string) ([]byte, error) {
 				ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 				defer cancel()
@@ -71,7 +71,10 @@ func TestCompiledCleanStateReadinessRefusalsAndOfflineStacks(t *testing.T) {
 			if output, err := git("-c", "user.name=SF Test", "-c", "user.email=sf@example.invalid", "commit", "-m", "baseline"); err != nil {
 				t.Fatalf("git commit: %v %s", err, output)
 			}
-			output, err := run("init", "--check", "--json")
+			secretEnv := append(append([]string(nil), env...), "GH_TOKEN=seeded-clean-state-secret")
+			check := exec.Command(binary, "init", "--check", "--json")
+			check.Dir, check.Env = repository, secretEnv
+			output, err := check.CombinedOutput()
 			var response api.Response
 			if json.Unmarshal(output, &response) != nil || response.OK != fixture.accepted || (err == nil) != response.OK || response.Mutation.Attempted {
 				t.Fatalf("init check exit=%v response=%+v output=%s", err, response, output)
