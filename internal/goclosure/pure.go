@@ -48,14 +48,14 @@ func ValidateCommand(root string, argv []string, allowMissingTest bool) (bool, e
 	if len(argv) == 3 && argv[0] == "go" && argv[1] == "test" && argv[2] == "./..." {
 		return Validate(root)
 	}
-	_, err := readPure(context.Background(), root, argv, allowMissingTest)
+	_, err := readPure(context.Background(), root, argv, allowMissingTest, nil)
 	return false, err
 }
 
 // readPure uses an os.Root to prevent escape even if a path component changes.
 // Every existing component must also be nonsymlinked. The returned exact bytes
 // are parsed and later staged; no compiler rereads the mutable source checkout.
-func readPure(ctx context.Context, root string, argv []string, allowMissingTest bool) ([][]byte, error) {
+func readPure(ctx context.Context, root string, argv []string, allowMissingTest bool, authenticated os.FileInfo) ([][]byte, error) {
 	a, b, err := PurePaths(argv)
 	if err != nil {
 		return nil, err
@@ -65,6 +65,12 @@ func readPure(ctx context.Context, root string, argv []string, allowMissingTest 
 		return nil, ErrInvalid
 	}
 	defer r.Close()
+	if authenticated != nil {
+		opened, err := r.Stat(".")
+		if err != nil || !opened.IsDir() || !os.SameFile(authenticated, opened) {
+			return nil, ErrInvalid
+		}
+	}
 	var result [][]byte
 	var packageName string
 	for i, name := range []string{a, b} {
@@ -148,25 +154,39 @@ func pureImport(p string) bool {
 // StagePure writes only validated bytes into a new private directory under
 // supervisor-owned scratch. The caller owns cleanup and must retain it on an
 // ambiguous live process, just like the toolchain and command scratch.
-func StagePure(ctx context.Context, root string, argv []string, scratch string) ([]string, error) {
-	sources, err := readPure(ctx, root, argv, false)
+func StagePure(ctx context.Context, root string, authenticated os.FileInfo, argv []string, scratch string) ([]string, func(), error) {
+	if authenticated == nil || !authenticated.IsDir() {
+		return nil, nil, ErrInvalid
+	}
+	sources, err := readPure(ctx, root, argv, false, authenticated)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	dir, err := os.MkdirTemp(scratch, "pure-go-")
 	if err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+	cleanup := func() {
+		// Restore directory write permission only after the caller proves drain.
+		_ = os.Chmod(dir, 0700)
+		_ = os.RemoveAll(dir)
 	}
 	var files []string
 	for i, name := range []string{"source.go", "source_test.go"} {
 		p := filepath.Join(dir, name)
 		if err := os.WriteFile(p, sources[i], 0400); err != nil {
-			return nil, err
+			cleanup()
+			return nil, nil, err
 		}
 		files = append(files, p)
 	}
 	if err := os.Chmod(dir, 0500); err != nil {
-		return nil, err
+		cleanup()
+		return nil, nil, err
 	}
-	return files, ctx.Err()
+	if err := ctx.Err(); err != nil {
+		cleanup()
+		return nil, nil, err
+	}
+	return files, cleanup, nil
 }

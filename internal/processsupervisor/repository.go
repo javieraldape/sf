@@ -245,10 +245,20 @@ func (s RepositoryCommandSupervisor) Run(ctx context.Context, claim contracts.Re
 	}
 	files := spec.Argv[2:]
 	if _, _, pureErr := goclosure.PurePaths(spec.Argv); pureErr == nil {
-		files, err = goclosure.StagePure(runCtx, spec.Directory, spec.Argv, tmp)
+		authenticated, statErr := worktreeFD.Stat()
+		if statErr != nil {
+			return contracts.CommandResult{}, ErrUnclear
+		}
+		var cleanup func()
+		files, cleanup, err = goclosure.StagePure(runCtx, spec.Directory, authenticated, spec.Argv, tmp)
 		if err != nil {
 			return contracts.CommandResult{}, ErrUnclear
 		}
+		defer func() {
+			if !retainLaunch {
+				cleanup()
+			}
+		}()
 		env = append(env, "GO111MODULE=off", "GOFLAGS=", "GOPATH="+home)
 	}
 	self, err = stageRepositoryGate(self)
@@ -263,7 +273,7 @@ func (s RepositoryCommandSupervisor) Run(ctx context.Context, claim contracts.Re
 	// Package execution is serial so the shared durable group-report/
 	// acknowledgement pipe cannot acknowledge a different test binary.
 	// -count=1 makes a verification actually execute rather than trust a prior
-	// Go cache result. Policy has already required the sole v1 recipe.
+	// Go cache result. Policy has already required an exact v1 recipe.
 	launchArgs := append([]string{"test", "-p=1", "-count=1", "-exec=" + self + " __repository_command_test_gate"}, files...)
 	gitFile, err := repositoryGitFilePath(identity)
 	if err != nil {
