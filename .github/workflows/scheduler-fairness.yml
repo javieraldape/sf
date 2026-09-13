@@ -1,0 +1,27 @@
+name: scheduler-fairness
+on:
+  push:
+    branches: [fix/scheduler-fairness]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  reproduce:
+    runs-on: macos-14
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Prove unchanged waiting ticket starves its sibling
+        run: |
+          set +e
+          go test -p 1 -count=1 ./internal/workflowruntime -run '^TestSchedulerRotatesPastUnchangedWaitingTicket$' -v > "$RUNNER_TEMP/starvation.log" 2>&1
+          result=$?
+          set -e
+          cat "$RUNNER_TEMP/starvation.log"
+          test "$result" -ne 0
+          grep -Fq 'fair scheduling: got a-wait (invoked), want b-build' "$RUNNER_TEMP/starvation.log"
