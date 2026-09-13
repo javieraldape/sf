@@ -9,7 +9,10 @@ Status: implementation approved on 2026-09-12; initial work from main `f632e81` 
 - Follow-up `c376985` passed GitHub ticket-entry `34736496425`, covering normal
   and race CLI tests, no-model authoring/capture regressions, builds, and
   repository/docs/secret checks. Broad baseline `34735980022` covers the
-  shared capture fix `f97d415` and was still running at this checkpoint.
+  shared capture fix `f97d415` and failed the prepared-amendment recovery race
+  case at its eight-minute fixture deadline. The same unchanged test passed
+  on merged main in 351s; a narrowly scoped test-budget repair is being
+  validated without weakening recovery assertions or production timeouts.
 - The connected `TestTicketConnectedAuthoringSaveStartViewWatchJourney` proves
   exact reviewed/saved source through explicit submit/start, scoped view and
   active/quiet/disconnected/reconnected watch using one synthetic service.

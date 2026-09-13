@@ -6,8 +6,11 @@
   through `c376985c1eaf6b57558a3142143e0a597ce695e8`. Its GitHub ticket-entry
   run `34736496425` PASS (normal/race CLI, authoring, capture, connected journey,
   build and repository/docs/secret checks). Broad repository-baseline
-  `34735980022` on capture fix `f97d415` still has one running runtime-race
-  shard and no failures at the last observation; do not call it passed yet.
+  `34735980022` on capture fix `f97d415` failed only runtime-race shard 1:
+  prepared-amendment recovery/new_leader hit its eight-minute fixture deadline
+  at 480.08s with an evidence-conflict error. Other subcases passed; the same
+  unchanged case previously passed on main in 351.21s. Test-only bounded
+  workload-budget repair is in progress; production authority stays unchanged.
   PR #11 remains merged at `638f231`; the follow-up is not merged or installed.
 - The explicitly approved additional draft retry WAS USED ONCE, from verified
   `f97d415` CI binaries. Preparation passed Claude 2.1.263 / sonnet-4-6; the
