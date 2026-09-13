@@ -97,8 +97,8 @@ test-compiled: test-compiled-e2e
 # readable verification gates without running that complete suite again.
 # Static/repository/release checks are part of the same claimed final gate.
 # Without SF_CI_LANE this is the complete serialized local path. Hosted CI
-# distributes the same gates across isolated runners, including all eight
-# disjoint Store, daemon, other-package and workflowruntime race shards;
+# distributes the same gates across isolated runners, including eight Store,
+# two daemon, four other-package and four workflowruntime race shards;
 # one lane alone is NOT complete acceptance.
 # Each lane keeps the existing per-package bounds.
 test-all:
