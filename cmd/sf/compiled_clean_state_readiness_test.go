@@ -23,6 +23,14 @@ func TestCompiledCleanStateReadinessRefusalsAndOfflineStacks(t *testing.T) {
 		t.Skip("macOS clean-state acceptance")
 	}
 	binary := buildDevRuntimeBundle(t)
+	runnerHome, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	runnerHome, err = filepath.Abs(runnerHome)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, fixture := range []struct {
 		name       string
 		files      map[string]string
@@ -47,10 +55,18 @@ func TestCompiledCleanStateReadinessRefusalsAndOfflineStacks(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			binDir := filepath.Join(root, "bin")
-			if err := os.Mkdir(binDir, 0700); err != nil {
+			binDir, err := os.MkdirTemp(runnerHome, ".sf-clean-state-gh-")
+			if err != nil {
 				t.Fatal(err)
 			}
+			relative, err := filepath.Rel(runnerHome, binDir)
+			if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+				t.Fatal("fake gh directory escaped runner home")
+			}
+			if err := os.Chmod(binDir, 0700); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = os.RemoveAll(binDir) })
 			gh := filepath.Join(binDir, "gh")
 			if err := os.WriteFile(gh, []byte("#!/bin/sh\ncase \"$1 $2\" in\n  \"--version \"*) echo 'gh version 2.0.0'; exit 0 ;;\n  \"auth status\"*) echo 'not logged in' >&2; exit 1 ;;\n  *) exit 1 ;;\nesac\n"), 0700); err != nil {
 				t.Fatal(err)
@@ -178,10 +194,27 @@ func TestCompiledCleanStateReadinessRefusalsAndOfflineStacks(t *testing.T) {
 			}
 			doctorOutput, doctorErr := run("doctor", "--json")
 			var doctorResponse api.Response
-			if doctorErr == nil || json.Unmarshal(doctorOutput, &doctorResponse) != nil || doctorResponse.OK || doctorResponse.Mutation.Attempted || !strings.Contains(string(doctorOutput), `"code":"doctor_failed"`) ||
+			var doctor struct {
+				Authentication []struct {
+					Provider      string `json:"provider"`
+					Installed     bool   `json:"installed"`
+					Authenticated bool   `json:"authenticated"`
+					State         string `json:"state"`
+				} `json:"authentication"`
+			}
+			if json.Unmarshal(doctorOutput, &doctorResponse) != nil || json.Unmarshal(doctorResponse.Data, &doctor) != nil {
+				t.Fatalf("missing gh login produced invalid doctor JSON: err=%v output=%s", doctorErr, doctorOutput)
+			}
+			githubRecord := false
+			for _, record := range doctor.Authentication {
+				if record.Provider == "github" && record.Installed && !record.Authenticated && record.State == "unauthenticated" {
+					githubRecord = true
+				}
+			}
+			if doctorErr == nil || doctorResponse.OK || doctorResponse.Mutation.Attempted || !strings.Contains(string(doctorOutput), `"code":"doctor_failed"`) ||
 				!strings.Contains(string(doctorOutput), `"id":"gh_executable"`) ||
 				!strings.Contains(string(doctorOutput), `"id":"github_auth"`) ||
-				!strings.Contains(string(doctorOutput), `"auth","login","github"`) {
+				!strings.Contains(string(doctorOutput), `"auth","login","github"`) || !githubRecord {
 				t.Fatalf("missing gh login was not an actionable refusal: err=%v output=%s", doctorErr, doctorOutput)
 			}
 		})
