@@ -13,11 +13,17 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - name: Prove unchanged waiting ticket starves its sibling
+      - name: Fairness, concurrency, and control regression suites
+        run: go test -race -p 1 -count=1 ./internal/workflowruntime
+      - name: Prove old scheduler starves its sibling
         run: |
+          cp internal/workflowruntime/scheduler.go "$RUNNER_TEMP/scheduler-fixed.go"
+          trap 'cp "$RUNNER_TEMP/scheduler-fixed.go" internal/workflowruntime/scheduler.go' EXIT
+          git show a40a0159c9b930fb7cc09b9ed4bd0d5373b72a01:internal/workflowruntime/scheduler.go > internal/workflowruntime/scheduler.go
           set +e
           go test -p 1 -count=1 ./internal/workflowruntime -run '^TestSchedulerRotatesPastUnchangedWaitingTicket$' -v > "$RUNNER_TEMP/starvation.log" 2>&1
           result=$?
@@ -25,3 +31,8 @@ jobs:
           cat "$RUNNER_TEMP/starvation.log"
           test "$result" -ne 0
           grep -Fq 'fair scheduling: got a-wait (invoked), want b-build' "$RUNNER_TEMP/starvation.log"
+      - name: Static checks
+        run: |
+          go vet ./internal/workflowruntime
+          scripts/repo-check
+          scripts/secret-scan
