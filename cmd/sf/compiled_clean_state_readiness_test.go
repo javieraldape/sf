@@ -47,13 +47,29 @@ func TestCompiledCleanStateReadinessRefusalsAndOfflineStacks(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			env := []string{"HOME=" + home, "PATH=/usr/bin:/bin:/usr/sbin:/sbin", "TMPDIR=" + root, "LANG=C", "CODEX_HOME=" + filepath.Join(root, "codex"), "GH_CONFIG_DIR=" + filepath.Join(root, "gh"), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null"}
+			binDir := filepath.Join(root, "bin")
+			if err := os.Mkdir(binDir, 0700); err != nil {
+				t.Fatal(err)
+			}
+			gh := filepath.Join(binDir, "gh")
+			if err := os.WriteFile(gh, []byte("#!/bin/sh\ncase \"$1 $2\" in\n  \"--version \"*) echo 'gh version 2.0.0'; exit 0 ;;\n  \"auth status\"*) echo 'not logged in' >&2; exit 1 ;;\n  *) exit 1 ;;\nesac\n"), 0700); err != nil {
+				t.Fatal(err)
+			}
+			env := []string{"HOME=" + home, "PATH=" + binDir + ":/usr/bin:/bin:/usr/sbin:/sbin", "TMPDIR=" + root, "LANG=C", "CODEX_HOME=" + filepath.Join(root, "codex"), "GH_CONFIG_DIR=" + filepath.Join(root, "gh"), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null"}
 			run := func(args ...string) ([]byte, error) {
 				ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 				defer cancel()
 				cmd := exec.CommandContext(ctx, binary, args...)
 				cmd.Dir, cmd.Env = repository, env
 				return cmd.CombinedOutput()
+			}
+			if output, err := run("--help"); err != nil || !bytes.Contains(output, []byte("safe local software factory")) {
+				t.Fatalf("help exit=%v output=%s", err, output)
+			}
+			versionOutput, err := run("version", "--json")
+			var versionResponse api.Response
+			if err != nil || json.Unmarshal(versionOutput, &versionResponse) != nil || !versionResponse.OK || versionResponse.Mutation.Attempted {
+				t.Fatalf("version exit=%v response=%+v output=%s", err, versionResponse, versionOutput)
 			}
 			git := func(args ...string) ([]byte, error) {
 				ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
@@ -155,6 +171,13 @@ func TestCompiledCleanStateReadinessRefusalsAndOfflineStacks(t *testing.T) {
 						}
 					}
 				}
+			}
+			doctorOutput, doctorErr := run("doctor", "--json")
+			if doctorErr == nil || !strings.Contains(string(doctorOutput), `"code":"doctor_failed"`) ||
+				!strings.Contains(string(doctorOutput), `"id":"gh_executable"`) ||
+				!strings.Contains(string(doctorOutput), `"id":"github_auth"`) ||
+				!strings.Contains(string(doctorOutput), `"auth","login","github"`) {
+				t.Fatalf("missing gh login was not an actionable refusal: err=%v output=%s", doctorErr, doctorOutput)
 			}
 		})
 	}
