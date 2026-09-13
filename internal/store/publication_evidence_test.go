@@ -381,6 +381,33 @@ func TestPausedPublishingResumeToWaitingCIAuthenticatesControlLineage(t *testing
 	}
 }
 
+func TestPublishedCandidateAtomicallyStopsAtFirstPREndpointAndConsumesOnce(t *testing.T) {
+	db, ctx, ticket, fence := publicationLifecycleFixture(t)
+	if _, err := db.db.ExecContext(ctx, `INSERT INTO ticket_execution_policies(channel,project_id,ticket_id,endpoint,start_ticket_version,created_at) VALUES(?,?,?,'pr',2,?)`, ticket.Ref.Channel, ticket.Ref.Project, ticket.Ref.Ticket, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+		t.Fatal(err)
+	}
+	recordFixturePublication(t, db, ctx, ticket, fence)
+	transition := Transition{Ref: ticket.Ref, ExpectedVersion: ticket.Version, From: domain.StatePublishing, To: domain.StateWaitingCI, Trigger: "effects_confirmed", Fence: fence}
+	result, err := db.TransitionPublishedCandidate(ctx, transition)
+	if err != nil {
+		t.Fatal(err)
+	}
+	paused, err := db.Ticket(ctx, ticket.Ref)
+	if err != nil || paused.State != domain.StatePaused || paused.ResumeState != domain.StateWaitingCI || paused.BlockedCode != "pr_opened" || paused.Version != ticket.Version+2 || result.Version != paused.Version {
+		t.Fatalf("endpoint pause result=%+v ticket=%+v err=%v", result, paused, err)
+	}
+	if replay, err := db.TransitionPublishedCandidate(ctx, transition); err != nil || replay.Version != paused.Version {
+		t.Fatalf("lost publication response replay=%+v err=%v", replay, err)
+	}
+	resumed, observed, err := db.ResumePREndpoint(ctx, ticket.Ref, paused.Version, fence)
+	if err != nil || observed || resumed.State != domain.StateWaitingCI || resumed.Version != paused.Version+1 {
+		t.Fatalf("endpoint resume ticket=%+v observed=%v err=%v", resumed, observed, err)
+	}
+	if replay, observed, err := db.ResumePREndpoint(ctx, ticket.Ref, paused.Version, fence); err != nil || !observed || replay.Version != resumed.Version {
+		t.Fatalf("lost resume response replay=%+v observed=%v err=%v", replay, observed, err)
+	}
+}
+
 func TestWaitingCIPublicationReaderRequiresFenceAfterLeaderAcquisition(t *testing.T) {
 	db, ctx, ticket, fence := publicationLifecycleFixture(t)
 	recordFixturePublication(t, db, ctx, ticket, fence)

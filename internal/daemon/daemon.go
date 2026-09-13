@@ -1388,10 +1388,14 @@ func eventMatchesPhase(event store.Event, phase string) bool {
 func (daemon *Daemon) startTicket(ctx context.Context, request api.Request, _ domain.OperatorIdentity) api.Response {
 	var parameters struct {
 		ticketParameters
-		AcceptCostEstimates bool `json:"accept_cost_estimates"`
+		AcceptCostEstimates bool   `json:"accept_cost_estimates"`
+		Until               string `json:"until"`
 	}
 	if err := decodeParameters(request.Parameters, &parameters); err != nil {
 		return daemon.failure(request, "invalid_ticket_reference", "start parameters are invalid", false)
+	}
+	if parameters.Until != "" && parameters.Until != store.ExecutionEndpointPR {
+		return daemon.failure(request, "invalid_until", "until accepts only pr", false)
 	}
 	refRequest := request
 	refRequest.Parameters, _ = json.Marshal(parameters.ticketParameters)
@@ -1450,9 +1454,9 @@ func (daemon *Daemon) startTicket(ctx context.Context, request api.Request, _ do
 	var started store.Ticket
 	var observed bool
 	if checkedProject != nil {
-		started, observed, err = daemon.store.StartWithCheckedProjectOwnership(ctx, ref, stored.Version, domain.Fence{LeaderEpoch: daemon.epoch, RunnerEpoch: stored.RunnerEpoch}, workflowID, daemon.clock.Now().UTC(), *checkedProject)
+		started, observed, err = daemon.store.StartWithCheckedProjectOwnershipUntil(ctx, ref, stored.Version, domain.Fence{LeaderEpoch: daemon.epoch, RunnerEpoch: stored.RunnerEpoch}, workflowID, daemon.clock.Now().UTC(), *checkedProject, parameters.Until)
 	} else {
-		started, observed, err = daemon.store.StartWithProjectOwnership(ctx, ref, stored.Version, domain.Fence{LeaderEpoch: daemon.epoch, RunnerEpoch: stored.RunnerEpoch}, workflowID, daemon.clock.Now().UTC())
+		started, observed, err = daemon.store.StartWithProjectOwnershipUntil(ctx, ref, stored.Version, domain.Fence{LeaderEpoch: daemon.epoch, RunnerEpoch: stored.RunnerEpoch}, workflowID, daemon.clock.Now().UTC(), parameters.Until)
 	}
 	if err != nil {
 		if errors.Is(err, store.ErrStartConfigurationChanged) {
@@ -1854,12 +1858,32 @@ func (daemon *Daemon) resumeTicket(ctx context.Context, request api.Request, ide
 	if stored.State == domain.StateBlocked && nonRecoverableTicketBlocker(stored.BlockedCode) {
 		return daemon.failure(request, stored.BlockedCode, "this ticket's safety boundary cannot be resumed; cancel it, then submit a fresh ticket", false)
 	}
+	if err := daemon.lease.Validate(); err != nil {
+		return daemon.failure(request, "leader_lost", "daemon leadership is no longer valid", true)
+	}
+	if endpointPaused, endpointErr := daemon.store.IsPREndpointPaused(ctx, stored); endpointErr != nil {
+		return daemon.failure(request, "resume_state_unavailable", "the PR endpoint evidence could not be authenticated", true)
+	} else if endpointPaused {
+		if _, selectErr := daemon.spec.Select(string(domain.StatePaused), "operator_resume", map[string]bool{"operator_identity_authenticated": true, "pause_reason_pr_opened": true, "publication_witness_exact": true, "first_pr_handoff_unconsumed": true}); selectErr != nil {
+			return daemon.failure(request, "resume_transition_refused", "the PR endpoint continuation is not allowed by the lifecycle specification", false)
+		}
+		resumed, observed, resumeErr := daemon.store.ResumePREndpoint(ctx, ref, stored.Version, domain.Fence{LeaderEpoch: daemon.epoch, RunnerEpoch: stored.RunnerEpoch})
+		if resumeErr != nil {
+			return daemon.failure(request, "resume_transition_refused", "the PR endpoint could not be consumed", errors.Is(resumeErr, store.ErrBusy))
+		}
+		return daemon.success(request, api.Mutation{Attempted: !observed, Kind: "ticket_resume", Identity: string(ref.Ticket), Observed: observed}, ticketView(resumed))
+	} else if stored.State == domain.StateWaitingCI {
+		consumed, consumedErr := daemon.store.PREndpointConsumed(ctx, ref)
+		if consumedErr != nil {
+			return daemon.failure(request, "resume_state_unavailable", "the PR endpoint consumption could not be authenticated", true)
+		}
+		if consumed {
+			return daemon.success(request, api.Mutation{Attempted: false, Kind: "ticket_resume", Identity: string(ref.Ticket), Observed: true}, ticketView(stored))
+		}
+	}
 	controller, ok := daemon.control.(RuntimeRearmController)
 	if !ok {
 		return daemon.failure(request, "runtime_rearm_unavailable", "ticket resume is unavailable until the runtime control boundary is configured", true)
-	}
-	if err := daemon.lease.Validate(); err != nil {
-		return daemon.failure(request, "leader_lost", "daemon leadership is no longer valid", true)
 	}
 	transitioned := false
 	if stored.State == domain.StatePaused {
@@ -2616,6 +2640,9 @@ func nonRecoverableTicketBlocker(code string) bool {
 }
 
 func (daemon *Daemon) ticketBlockedNextAction(value store.Ticket) (domain.NextAction, bool) {
+	if value.State == domain.StatePaused && value.ResumeState == domain.StateWaitingCI && value.BlockedCode == "pr_opened" {
+		return domain.NextAction{Code: "continue_after_pr", Argv: []string{daemon.executable(), "resume", string(value.Ref.Ticket)}}, true
+	}
 	if !nonRecoverableTicketBlocker(value.BlockedCode) || value.Ref.Ticket == "" {
 		return domain.NextAction{}, false
 	}

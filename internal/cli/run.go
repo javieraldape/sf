@@ -14,9 +14,13 @@ func (a *app) runCommand() *cobra.Command {
 	var project string
 	var watch bool
 	var estimates bool
+	var until string
 	command := &cobra.Command{Use: "run <ticket.md> --project <name>", Short: "Submit a ticket and start it if queued, optionally watching progress", Args: cobra.ExactArgs(1),
 		Long: "Submit through the daemon, then start only its exact queued ticket. Repeated runs reuse the same source identity; active/paused tickets are not restarted or resumed. Uncertain responses stop without retry. --watch follows status; Ctrl-C stops watching, not the ticket. --json --watch emits response envelopes as NDJSON.",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if until != "" && until != "pr" {
+				return a.emit(failure("invalid_until", "--until accepts only pr", commandHelpAction(cmd)))
+			}
 			parsed, err := readLocalTicket(args[0])
 			if err != nil {
 				return a.emit(failure("invalid_ticket", err.Error(), commandHelpAction(cmd)))
@@ -51,6 +55,9 @@ func (a *app) runCommand() *cobra.Command {
 				if estimates {
 					values["accept_cost_estimates"] = true
 				}
+				if until != "" {
+					values["until"] = until
+				}
 				result = a.request("ticket.start", selected.ID, params(values, a.channel))
 				if !result.OK {
 					// Submission is already durable even when start was refused.
@@ -79,6 +86,7 @@ func (a *app) runCommand() *cobra.Command {
 	command.Flags().StringVar(&project, "project", "", "registered project name")
 	command.Flags().BoolVar(&watch, "watch", false, "follow the exact ticket after submission/start")
 	command.Flags().BoolVar(&estimates, "accept-cost-estimates", false, "accept estimated (not verified) costs for a queued ticket; not a hard dollar cap")
+	command.Flags().StringVar(&until, "until", "", "stop after the first draft PR handoff (pr)")
 	_ = command.MarkFlagRequired("project")
 	return command
 }

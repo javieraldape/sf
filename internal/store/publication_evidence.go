@@ -1171,6 +1171,25 @@ func (s *Store) TransitionPublishedCandidate(ctx context.Context, transition Tra
 			result.Version, result.EventID = version, eventID
 			return nil
 		}
+		if state == domain.StatePaused && version == transition.ExpectedVersion+2 {
+			if runner != value.CurrentFence.RunnerEpoch || transition.Fence != value.CurrentFence {
+				return ErrStaleFence
+			}
+			if err := authenticatePublishedWaitingEvent(ctx, conn, transition.Ref, value, transition.ExpectedVersion+1); err != nil {
+				return err
+			}
+			var resume domain.State
+			var blocked string
+			if err := conn.QueryRowContext(ctx, `SELECT COALESCE(resume_state,''),blocked_code FROM tickets WHERE channel=? AND project_id=? AND id=?`, transition.Ref.Channel, transition.Ref.Project, transition.Ref.Ticket).Scan(&resume, &blocked); err != nil || resume != domain.StateWaitingCI || blocked != "pr_opened" {
+				return ErrPublicationEvidence
+			}
+			var count int
+			if err := conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM events WHERE channel=? AND project_id=? AND ticket_id=? AND ticket_version=? AND trigger='endpoint_reached' AND from_state='waiting_ci' AND to_state='paused'`, transition.Ref.Channel, transition.Ref.Project, transition.Ref.Ticket, version).Scan(&count); err != nil || count != 1 {
+				return ErrPublicationEvidence
+			}
+			result.Version = version
+			return nil
+		}
 		if state != domain.StatePublishing || version != transition.ExpectedVersion || version != value.CurrentTicketVersion || runner != value.CurrentFence.RunnerEpoch {
 			return ErrStaleFence
 		}
@@ -1198,6 +1217,34 @@ func (s *Store) TransitionPublishedCandidate(ctx context.Context, transition Tra
 		}
 		result.Version = version + 1
 		result.EventID, _ = event.LastInsertId()
+		endpoint, err := hasUnconsumedPREndpoint(ctx, conn, transition.Ref)
+		if err != nil {
+			return err
+		}
+		if endpoint {
+			pauseVersion := version + 2
+			prURL := fmt.Sprintf("https://github.com/%s/%s/pull/%d", value.PullRequest.Repository.Owner, value.PullRequest.Repository.Name, value.PullRequest.Number)
+			endpointPayload, _ := json.Marshal(map[string]string{"endpoint": "pr", "reason": "pr_opened", "pr_url": prURL, "head": value.Candidate.Snapshot.HeadSHA, "witness_digest": value.WitnessDigest})
+			updated, err := conn.ExecContext(ctx, `UPDATE tickets SET state='paused',resume_state='waiting_ci',blocked_code='pr_opened',version=? WHERE channel=? AND project_id=? AND id=? AND state='waiting_ci' AND version=? AND runner_epoch=?`, pauseVersion, transition.Ref.Channel, transition.Ref.Project, transition.Ref.Ticket, version+1, runner)
+			if err != nil {
+				return err
+			}
+			if n, _ := updated.RowsAffected(); n != 1 {
+				return ErrStaleFence
+			}
+			// The endpoint is an operator stop, not a runnable wait. Release its
+			// admission capacity before paused becomes visible so another ticket
+			// can progress; explicit continuation reacquires it transactionally.
+			if _, err := conn.ExecContext(ctx, `DELETE FROM leases WHERE channel=? AND project_id=? AND ticket_id=? AND runner_epoch=?`, transition.Ref.Channel, transition.Ref.Project, transition.Ref.Ticket, runner); err != nil {
+				return err
+			}
+			pausedEvent, err := conn.ExecContext(ctx, `INSERT INTO events(channel,project_id,ticket_id,ticket_version,trigger,from_state,to_state,payload,created_at) VALUES(?,?,?,?,?,?,?,?,?)`, transition.Ref.Channel, transition.Ref.Project, transition.Ref.Ticket, pauseVersion, "endpoint_reached", domain.StateWaitingCI, domain.StatePaused, string(endpointPayload), created)
+			if err != nil {
+				return err
+			}
+			result.Version = pauseVersion
+			result.EventID, _ = pausedEvent.LastInsertId()
+		}
 		return nil
 	})
 	return result, err

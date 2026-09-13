@@ -151,6 +151,17 @@
       "invalidates": []
     },
     {
+      "id": "first_pr_endpoint",
+      "from": ["waiting_ci"],
+      "trigger": "endpoint_reached",
+      "guards": ["execution_endpoint_pr", "first_pr_handoff_unconsumed", "publication_witness_exact"],
+      "to": "paused",
+      "resume_state": "waiting_ci",
+      "phase_disposition": "pause",
+      "allowed_effects": [],
+      "invalidates": []
+    },
+    {
       "id": "ci_pending",
       "from": ["waiting_ci"],
       "trigger": "checks_pending",
@@ -392,6 +403,16 @@
       "trigger": "operator_resume",
       "guards": ["operator_identity_authenticated", "takeover_diff_none", "branch_remote_identity_exact", "prerequisites_green"],
       "to": "$resume_state",
+      "phase_disposition": "resume",
+      "allowed_effects": [],
+      "invalidates": []
+    },
+    {
+      "id": "resume_first_pr_endpoint",
+      "from": ["paused"],
+      "trigger": "operator_resume",
+      "guards": ["operator_identity_authenticated", "pause_reason_pr_opened", "publication_witness_exact", "first_pr_handoff_unconsumed"],
+      "to": "waiting_ci",
       "phase_disposition": "resume",
       "allowed_effects": [],
       "invalidates": []
