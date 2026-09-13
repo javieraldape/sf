@@ -218,3 +218,9 @@ This recipe requires Node `>=22.8.0 <23`. On macOS sf accepts only the
 authenticated resolved executable behind the supported Homebrew entrypoints
 `/opt/homebrew/bin/node` (Apple Silicon) or `/usr/local/bin/node` (Intel), and
 copies that runtime's non-system Mach-O closure into a private launch stage.
+Use Homebrew's `node@22` distribution with that entrypoint resolving to its
+executable. The staging boundary permits at most 64 MiB per executable/library
+and 256 MiB for the complete closure. A monolithic Node distribution can exceed
+these bounds even when its version matches; SF refuses it rather than executing
+an unstaged fallback. GitHub's compiled onboarding acceptance provisions the
+Homebrew layout and checks the production runtime identity before starting a ticket.

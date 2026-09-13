@@ -92,6 +92,9 @@ then register it with the pair used in this guide:
 For Node, commit a meaningful baseline test (for example `test/smoke.test.js`)
 before setup; an empty package with no discoverable tests is refused. This
 baseline does not replace the independent verification for your new ticket.
+Use the Homebrew Node 22 runtime through SF's supported entrypoint, as described
+in [configuration](../configuration.md). A Node version alone is not sufficient:
+large monolithic distributions can exceed the authenticated staging limits.
 
 ```sh
 sf init --check
