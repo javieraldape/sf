@@ -1446,6 +1446,13 @@ func (b *limitedBuffer) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+// Override bytes.Buffer's promoted ReadFrom: os.exec's pipe copy can select
+// io.ReaderFrom instead of Write. Hide ReaderFrom from the nested copy so every
+// byte passes through the bounded Write while the source still drains to EOF.
+func (b *limitedBuffer) ReadFrom(r io.Reader) (int64, error) {
+	return io.Copy(struct{ io.Writer }{b}, r)
+}
+
 func (b *limitedBuffer) exceeded() bool { return b.truncated }
 
 var _ io.Writer = (*limitedBuffer)(nil)
