@@ -77,11 +77,11 @@ func TestAuthoringV61MigrationReopensWithPrivateBackup(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	files, err := filepath.Glob(filepath.Join(backups, "sf-schema-v061-to-v062*.sqlite"))
+	files, err := filepath.Glob(filepath.Join(backups, fmt.Sprintf("sf-schema-v061-to-v%03d-*.sqlite", schemaVersion)))
 	if err != nil || len(files) != 1 {
 		t.Fatalf("backups=%v err=%v", files, err)
 	}
-	if rawSchemaVersion(t, files[0]) != 61 || rawSchemaVersion(t, path) != 62 {
+	if rawSchemaVersion(t, files[0]) != 61 || rawSchemaVersion(t, path) != schemaVersion {
 		t.Fatal("migration or backup version changed")
 	}
 }
