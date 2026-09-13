@@ -23,7 +23,8 @@
   its environment entry together, keeping the same private-directory scope
   and original cleanup. GitHub `34742638116` PASSED on exact `10cd088`:
   both native path cases and Claude/Cursor utility cleanup tests passed.
-  Real authoring acceptance is still unproven; no further model call occurred.
+  Real authoring remains unproven; the subsequent authorized `10cd088`
+  attempt failed as recorded above.
 
 - Latest resume supersedes the pending-approval notes below. One newly approved
   draft diagnostic was used from verified `c376985` binaries: failed in 7.37s,

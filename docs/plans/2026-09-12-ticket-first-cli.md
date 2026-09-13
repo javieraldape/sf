@@ -20,8 +20,8 @@ Status: implementation approved on 2026-09-12; initial work from main `f632e81` 
   temporary path failed file access. `10cd088` normalizes TMP consistently
   for environment/cwd/profile without widening access; `34742638116` passed
   both native cases plus cleanup regressions and the full ticket-entry run.
-  Installed real acceptance on this new build has not run and needs a fresh
-  bounded-call authorization. No live installation or ticket mutation.
+  The later authorized `10cd088` installed attempt failed as recorded above;
+  no live installation or ticket mutation occurred.
 
 - Source review found an independent documented auth-mode incompatibility:
   authoring combined `--bare` with subscription OAuth. Claude's
