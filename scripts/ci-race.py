@@ -72,7 +72,14 @@ STORE_RACE_SECONDS = {
     "TestProviderRetryWaitingApprovalRearmDecisionAndMergingRestarts": 33,
 }
 RUNTIME_INTEGRATION_SECONDS = {
-    name: max(1, seconds / 3) for name, seconds in RUNTIME_RACE_SECONDS.items()
+    "TestPostbuildAmendmentCandidateFinalizationRecovery": 484,
+    "TestRepositoryMaterializerPostbuildAmendmentPreparedIndexRecovery": 465,
+    "TestPostbuildRepairCandidateFinalizationRecovery": 336,
+    "TestRepositoryMaterializerPostbuildAmendmentRealEndToEnd": 184,
+    "TestRepositoryMaterializerPreparePostbuildRepairRealBoundary": 72,
+    "TestRepositoryMaterializerRealSourceResumePreparedObservationLoss": 66,
+    "TestRepositoryMaterializerPostbuildRepairRealEndToEnd": 62,
+    "TestRepositoryMaterializerRealStoreGitReplay": 43,
 }
 CRASH_RUNTIME_SECONDS = {
     "TestPostbuildAmendmentCandidateFinalizationRecovery": 540,
@@ -83,6 +90,14 @@ MODE_WEIGHTS = {
     "runtime-race": RUNTIME_RACE_SECONDS,
     "runtime-integration": RUNTIME_INTEGRATION_SECONDS,
     "crash-runtime": CRASH_RUNTIME_SECONDS,
+}
+WEIGHT_PROVENANCE = {
+    "other": "measured successful macos run 34416329428; package elapsed",
+    "store": "measured successful macos run 34771148550; race top-level tests",
+    "runtime-race": "measured successful macos run 34416329428; race top-level tests",
+    "runtime-integration": "measured successful macos run 34771148550; normal top-level tests",
+    "crash-runtime": "measured successful macos run 34771148550; normal crash top-level tests",
+    "crash-other": "unweighted complete inventory; no inferred timings",
 }
 MAX_OUTPUT_BYTES = 1024 * 1024
 
@@ -143,7 +158,8 @@ def inventory(output):
 
 
 def write_artifact(directory, mode, index, count, names, selected, exit_code=None,
-                   elapsed=None, timings=None, output_tail=""):
+                   elapsed=None, test_timings=None, package_timings=None,
+                   output_tail=""):
     """Write one bounded, machine-readable shard record without affecting truth."""
     if not directory:
         return
@@ -152,8 +168,11 @@ def write_artifact(directory, mode, index, count, names, selected, exit_code=Non
     record = {
         "schema": 1, "mode": mode, "shard": index, "shard_count": count,
         "inventory": sorted(names), "selected": sorted(selected),
+        "weight_provenance": WEIGHT_PROVENANCE[mode],
         "exit_code": exit_code, "elapsed_seconds": elapsed,
-        "test_timings": timings or {}, "output_tail": output_tail[-MAX_OUTPUT_BYTES:],
+        "test_timings": test_timings or {},
+        "package_timings": package_timings or {},
+        "output_tail": output_tail[-MAX_OUTPUT_BYTES:],
     }
     (path / f"{mode}-{index}.json").write_text(
         json.dumps(record, indent=2, sort_keys=True) + "\n")
@@ -165,27 +184,50 @@ def run_recorded(command, directory, mode, index, count, names, selected):
     started = time.monotonic()
     output = deque()
     output_bytes = 0
-    timings = {}
-    # -v output stays human-readable in the Actions log and is also parsed into
-    # scheduling evidence. The bounded artifact retains the tail on failures.
+    test_timings = {}
+    package_timings = {}
+    # Go's event stream preserves package identity even when packages reuse a
+    # test name. Only Output payloads are printed, keeping the familiar verbose
+    # log; malformed/non-JSON compiler output is printed and retained verbatim.
     process = subprocess.Popen(command, stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT, text=True)
     assert process.stdout is not None
     try:
         for line in process.stdout:
-            print(line, end="", flush=True)
-            output.append(line)
-            output_bytes += len(line.encode("utf-8", errors="replace"))
+            rendered = line
+            try:
+                event = json.loads(line)
+            except (json.JSONDecodeError, TypeError):
+                event = None
+            if isinstance(event, dict):
+                rendered = event.get("Output", "")
+                package = event.get("Package")
+                test = event.get("Test")
+                action = event.get("Action")
+                elapsed_value = event.get("Elapsed")
+                if (package and test and "/" not in test and action in ("pass", "fail", "skip")
+                        and isinstance(elapsed_value, (int, float))):
+                    test_timings.setdefault(package, {})[test] = elapsed_value
+                elif (package and not test and action in ("pass", "fail", "skip")
+                      and isinstance(elapsed_value, (int, float))):
+                    package_timings[package] = elapsed_value
+            if rendered:
+                print(rendered, end="" if rendered.endswith("\n") else "\n", flush=True)
+            retained = rendered
+            encoded = retained.encode("utf-8", errors="replace")
+            if len(encoded) > MAX_OUTPUT_BYTES:
+                retained = encoded[-MAX_OUTPUT_BYTES:].decode("utf-8", errors="ignore")
+                encoded = retained.encode("utf-8", errors="replace")
+            output.append(retained)
+            output_bytes += len(encoded)
             while output and output_bytes > MAX_OUTPUT_BYTES:
                 output_bytes -= len(output.popleft().encode("utf-8", errors="replace"))
-            match = re.match(r"--- (?:PASS|FAIL|SKIP): (\S+) \(([0-9.]+)s\)", line.strip())
-            if match and "/" not in match.group(1):
-                timings[match.group(1)] = float(match.group(2))
         exit_code = process.wait()
     finally:
         elapsed = time.monotonic() - started
         write_artifact(directory, mode, index, count, names, selected,
-                       process.poll(), elapsed, timings, "".join(output))
+                       process.poll(), elapsed, test_timings, package_timings,
+                       "".join(output))
     return exit_code
 
 
@@ -203,11 +245,11 @@ def main():
         if args.mode == "other":
             names = selected
             selected = balanced_partition(names, args.index, args.count, PACKAGE_SECONDS)
-            command = ["go", "test", *FLAGS, "-v", *selected]
+            command = ["go", "test", *FLAGS, "-json", *selected]
         else:
             names = [p for p in packages if p != RUNTIME]
             selected = names
-            command = ["go", "test", *INTEGRATION_FLAGS, "-v", *selected,
+            command = ["go", "test", *INTEGRATION_FLAGS, "-json", *selected,
                        "-run", CRASH_PATTERN]
         print(f"{args.mode} shard {args.index + 1}/{args.count}: " + ", ".join(selected), flush=True)
     else:
@@ -223,7 +265,7 @@ def main():
             names = [n for n in names if re.search(CRASH_PATTERN, n)]
         selected = balanced_partition(names, args.index, args.count, MODE_WEIGHTS[args.mode])
         print(f"{package} shard {args.index + 1}/{args.count}: {len(selected)}/{len(names)} tests", flush=True)
-        command = ["go", "test", *flags, "-v", package,
+        command = ["go", "test", *flags, "-json", package,
                    "-run", "^(?:" + "|".join(re.escape(n) for n in selected) + ")$"]
     if args.list_only:
         write_artifact(args.artifact_dir, args.mode, args.index, args.count,

@@ -1,9 +1,13 @@
 import importlib.util
+import io
 import itertools
+import json
 from pathlib import Path
 import re
 import subprocess
+import tempfile
 import unittest
+from contextlib import redirect_stdout
 from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location("ci_race", Path(__file__).with_name("ci-race.py"))
@@ -134,7 +138,7 @@ class RacePartitionTest(unittest.TestCase):
              patch.object(ci.subprocess, "call", return_value=1) as run:
             self.assertEqual(ci.main(), 1)
             self.assertEqual(listing.call_args.args[0], ["go", "test", "-race", "-list", ".", ci.RUNTIME])
-            self.assertEqual(run.call_args.args[0], ["go", "test", *ci.FLAGS, "-v", ci.RUNTIME,
+            self.assertEqual(run.call_args.args[0], ["go", "test", *ci.FLAGS, "-json", ci.RUNTIME,
                                                    "-run", "^(?:ExampleB|FuzzC|TestA)$"])
 
     def test_other_package_shards_keep_new_packages_and_propagate_failure(self):
@@ -170,7 +174,7 @@ class RacePartitionTest(unittest.TestCase):
              patch.object(ci.subprocess, "call", return_value=1) as run:
             self.assertEqual(ci.main(), 1)
             self.assertEqual(run.call_args.args[0], ["go", "test", *ci.INTEGRATION_FLAGS,
-                                                   "-v", "first", ci.STORE, "-run", ci.CRASH_PATTERN])
+                                                   "-json", "first", ci.STORE, "-run", ci.CRASH_PATTERN])
 
     def test_race_package_lanes_are_complete_and_disjoint(self):
         packages = ["first", ci.STORE, ci.RUNTIME, "last"]
@@ -205,6 +209,64 @@ class RacePartitionTest(unittest.TestCase):
             self.assertIn("30m", command)
             self.assertNotIn("-race", command)
             self.assertEqual(command[-1], "^(?:ExampleB|FuzzC|TestA)$")
+
+    def test_json_stream_records_package_scoped_timings_and_human_output(self):
+        lines = [
+            json.dumps({"Action": "output", "Package": "one", "Test": "TestSame",
+                        "Output": "=== RUN   TestSame\n"}) + "\n",
+            json.dumps({"Action": "pass", "Package": "one", "Test": "TestSame",
+                        "Elapsed": 1.25, "Output": "--- PASS: TestSame (1.25s)\n"}) + "\n",
+            json.dumps({"Action": "pass", "Package": "two", "Test": "TestSame",
+                        "Elapsed": 2.5, "Output": "--- PASS: TestSame (2.50s)\n"}) + "\n",
+            json.dumps({"Action": "pass", "Package": "one", "Elapsed": 1.5}) + "\n",
+        ]
+        process = FakeProcess(lines, 0)
+        with tempfile.TemporaryDirectory() as directory, \
+             patch.object(ci.subprocess, "Popen", return_value=process), \
+             redirect_stdout(io.StringIO()) as stdout:
+            self.assertEqual(ci.run_recorded(["go"], directory, "other", 0, 1,
+                                             ["one", "two"], ["one", "two"]), 0)
+            record = json.loads((Path(directory) / "other-0.json").read_text())
+        self.assertIn("--- PASS: TestSame", stdout.getvalue())
+        self.assertEqual(record["test_timings"]["one"]["TestSame"], 1.25)
+        self.assertEqual(record["test_timings"]["two"]["TestSame"], 2.5)
+        self.assertEqual(record["package_timings"], {"one": 1.5})
+        self.assertEqual(record["exit_code"], 0)
+        self.assertIn("measured successful", record["weight_provenance"])
+
+    def test_json_stream_preserves_nonzero_exit_and_malformed_failure_output(self):
+        failure = "compiler: malformed output must survive\n"
+        process = FakeProcess([failure], 2)
+        with tempfile.TemporaryDirectory() as directory, \
+             patch.object(ci.subprocess, "Popen", return_value=process), \
+             redirect_stdout(io.StringIO()) as stdout:
+            self.assertEqual(ci.run_recorded(["go"], directory, "store", 0, 1,
+                                             ["TestA"], ["TestA"]), 2)
+            record = json.loads((Path(directory) / "store-0.json").read_text())
+        self.assertIn(failure.strip(), stdout.getvalue())
+        self.assertIn(failure.strip(), record["output_tail"])
+        self.assertEqual(record["exit_code"], 2)
+
+    def test_json_stream_records_signal_cancellation_exit(self):
+        process = FakeProcess([], -15)
+        with tempfile.TemporaryDirectory() as directory, \
+             patch.object(ci.subprocess, "Popen", return_value=process):
+            self.assertEqual(ci.run_recorded(["go"], directory, "store", 0, 1,
+                                             ["TestA"], ["TestA"]), -15)
+            record = json.loads((Path(directory) / "store-0.json").read_text())
+        self.assertEqual(record["exit_code"], -15)
+
+
+class FakeProcess:
+    def __init__(self, lines, returncode):
+        self.stdout = iter(lines)
+        self.returncode = returncode
+
+    def wait(self):
+        return self.returncode
+
+    def poll(self):
+        return self.returncode
 
 
 if __name__ == "__main__":
