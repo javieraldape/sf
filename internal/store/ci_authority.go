@@ -667,24 +667,9 @@ func loadCICurrentPublicationAt(ctx context.Context, q ciQuery, ref domain.Ticke
 	// publication version here would incorrectly demand CI evidence for the
 	// publication transition itself.
 	waitingVersion := publication.CurrentTicketVersion + 1
-	baselineVersion := waitingVersion
-	baselineFence := publication.CurrentFence
-	// An explicit first-PR continuation is a distinct authenticated CI
-	// baseline. Its one-shot consumption may bind the unchanged runner to a
-	// newer daemon leader, so never infer that authority from ticket versions.
-	if waitingVersion <= ^uint64(0)-2 && version >= waitingVersion+2 && authenticatePREndpointResume(ctx, q, ref, waitingVersion+2) == nil {
-		endpointFence, fenceErr := prEndpointResumeFence(ctx, q, ref, waitingVersion+2)
-		if fenceErr != nil {
-			return PublishedCandidateEvidence{}, fenceErr
-		}
-		var prematureObservations, prematureTransitions int
-		if err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM ci_observations WHERE channel=? AND project_id=? AND ticket_id=? AND observed_ticket_version<?`, ref.Channel, ref.Project, ref.Ticket, waitingVersion+2).Scan(&prematureObservations); err != nil || prematureObservations != 0 {
-			return PublishedCandidateEvidence{}, ErrPublicationEvidence
-		}
-		if err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM ci_transition_evidence WHERE channel=? AND project_id=? AND ticket_id=? AND ticket_version<=?`, ref.Channel, ref.Project, ref.Ticket, waitingVersion+2).Scan(&prematureTransitions); err != nil || prematureTransitions != 0 {
-			return PublishedCandidateEvidence{}, ErrPublicationEvidence
-		}
-		baselineVersion, baselineFence = waitingVersion+2, endpointFence
+	baselineVersion, baselineFence, _, err := prEndpointCIBaseline(ctx, q, ref, publication, version)
+	if err != nil {
+		return PublishedCandidateEvidence{}, err
 	}
 	if state != string(domain.StateWaitingCI) || runner < baselineFence.RunnerEpoch || (runner == baselineFence.RunnerEpoch && leader != baselineFence.LeaderEpoch) {
 		return PublishedCandidateEvidence{}, ErrPublicationEvidence

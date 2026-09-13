@@ -119,6 +119,29 @@ func prEndpointResumeFence(ctx context.Context, q interface {
 	return fence, nil
 }
 
+// prEndpointCIBaseline authenticates the sole endpoint pause/continuation
+// bridge and returns the fence from which CI may proceed. No observation or CI
+// transition may predate that baseline because publication and the endpoint
+// pause commit atomically, leaving no runnable CI window.
+func prEndpointCIBaseline(ctx context.Context, q candidateEvidenceQuerier, ref domain.TicketRef, publication PublishedCandidateEvidence, liveVersion uint64) (uint64, domain.Fence, bool, error) {
+	waitingVersion := publication.CurrentTicketVersion + 1
+	if waitingVersion > ^uint64(0)-2 || liveVersion < waitingVersion+2 || authenticatePREndpointResume(ctx, q, ref, waitingVersion+2) != nil {
+		return waitingVersion, publication.CurrentFence, false, nil
+	}
+	fence, err := prEndpointResumeFence(ctx, q, ref, waitingVersion+2)
+	if err != nil {
+		return 0, domain.Fence{}, false, err
+	}
+	var observations, transitions int
+	if err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM ci_observations WHERE channel=? AND project_id=? AND ticket_id=? AND observed_ticket_version<?`, ref.Channel, ref.Project, ref.Ticket, waitingVersion+2).Scan(&observations); err != nil || observations != 0 {
+		return 0, domain.Fence{}, false, ErrPublicationEvidence
+	}
+	if err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM ci_transition_evidence WHERE channel=? AND project_id=? AND ticket_id=? AND ticket_version<=?`, ref.Channel, ref.Project, ref.Ticket, waitingVersion+2).Scan(&transitions); err != nil || transitions != 0 {
+		return 0, domain.Fence{}, false, ErrPublicationEvidence
+	}
+	return waitingVersion + 2, fence, true, nil
+}
+
 // ResumePREndpoint consumes the one-shot first-PR handoff and resumes CI in
 // the same transaction. Exact replay after a lost response returns observed.
 func (s *Store) ResumePREndpoint(ctx context.Context, ref domain.TicketRef, expected uint64, fence domain.Fence) (Ticket, bool, error) {

@@ -273,6 +273,10 @@ func finalReviewCIPendingChainFrom(ctx context.Context, q candidateEvidenceQueri
 // Later generations' CI cannot invalidate that already-consumed segment.
 func finalReviewCIPendingChainThrough(ctx context.Context, q candidateEvidenceQuerier, ref domain.TicketRef, publication PublishedCandidateEvidence, policy CIRequiredCheckPolicy, through uint64) (CIObservation, uint64, error) {
 	waitingVersion := publication.CurrentTicketVersion + 1
+	baselineVersion, baselineFence, _, err := prEndpointCIBaseline(ctx, q, ref, publication, through)
+	if err != nil {
+		return CIObservation{}, 0, fmt.Errorf("%w: final review endpoint baseline", ErrEvidenceConflict)
+	}
 	payload, err := json.Marshal(struct {
 		WitnessDigest    string `json:"witness_digest"`
 		WitnessCreatedAt string `json:"witness_created_at"`
@@ -289,15 +293,15 @@ func finalReviewCIPendingChainThrough(ctx context.Context, q candidateEvidenceQu
 	}
 	var greenCount int
 	var reviewVersion uint64
-	if err := q.QueryRowContext(ctx, `SELECT COUNT(*),COALESCE(MAX(ticket_version),0) FROM ci_transition_evidence WHERE channel=? AND project_id=? AND ticket_id=? AND candidate_generation=? AND candidate_head_sha=? AND candidate_tree_sha=? AND observation_classification='green' AND resulting_state='reviewing' AND resulting_trigger='checks_green' AND ticket_version<=?`, ref.Channel, ref.Project, ref.Ticket, publication.Candidate.Snapshot.Generation, publication.Candidate.Snapshot.HeadSHA, publication.Candidate.Snapshot.TreeSHA, through).Scan(&greenCount, &reviewVersion); err != nil || greenCount != 1 || reviewVersion <= waitingVersion {
+	if err := q.QueryRowContext(ctx, `SELECT COUNT(*),COALESCE(MAX(ticket_version),0) FROM ci_transition_evidence WHERE channel=? AND project_id=? AND ticket_id=? AND candidate_generation=? AND candidate_head_sha=? AND candidate_tree_sha=? AND observation_classification='green' AND resulting_state='reviewing' AND resulting_trigger='checks_green' AND ticket_version<=?`, ref.Channel, ref.Project, ref.Ticket, publication.Candidate.Snapshot.Generation, publication.Candidate.Snapshot.HeadSHA, publication.Candidate.Snapshot.TreeSHA, through).Scan(&greenCount, &reviewVersion); err != nil || greenCount != 1 || reviewVersion <= baselineVersion {
 		return CIObservation{}, 0, fmt.Errorf("%w: final review CI green cardinality", ErrEvidenceConflict)
 	}
 	if err := validateRunnerRecoveryCardinality(ctx, q, ref); err != nil {
 		return CIObservation{}, 0, fmt.Errorf("%w: final review CI recovery cardinality", ErrEvidenceConflict)
 	}
-	expectedRunner, expectedLeader := publication.CurrentFence.RunnerEpoch, publication.CurrentFence.LeaderEpoch
+	expectedRunner, expectedLeader := baselineFence.RunnerEpoch, baselineFence.LeaderEpoch
 	var green CIObservation
-	for version := waitingVersion + 1; version <= reviewVersion; version++ {
+	for version := baselineVersion + 1; version <= reviewVersion; version++ {
 		recovery, recovered, err := loadRunnerRecoveryAt(ctx, q, ref, version)
 		if err != nil {
 			return CIObservation{}, 0, fmt.Errorf("%w: final review CI recovery read", ErrEvidenceConflict)
