@@ -42,7 +42,13 @@ class RacePartitionTest(unittest.TestCase):
         self.assertNotIn("continue-on-error", workflow)
         self.assertIn("github.event.pull_request.number || github.run_id", workflow)
         self.assertIn("cancel-in-progress: ${{ github.event_name == 'pull_request' }}", workflow)
-        self.assertEqual(workflow.count("uses: actions/upload-artifact@v4"), 3)
+        self.assertEqual(workflow.count("uses: actions/upload-artifact@v4"), 4)
+        self.assertEqual(workflow.count("include-hidden-files: true"), 4)
+        for job in ("baseline", "store-race", "balanced", "runtime-integration"):
+            body = workflow.split(f"  {job}:\n", 1)[1]
+            body = re.split(r"\n  [a-z-]+:\n", body, maxsplit=1)[0]
+            self.assertIn("SF_CI_ARTIFACT_DIR: .ci-timings", body)
+            self.assertIn("uses: actions/upload-artifact@v4", body)
 
     def test_required_acceptance_gate_is_fail_closed(self):
         workflow = (Path(__file__).resolve().parent.parent /
