@@ -146,6 +146,9 @@ func TestCompiledCleanStateReadinessRefusalsAndOfflineStacks(t *testing.T) {
 					if json.Unmarshal(output, &envelope) != nil || !envelope.OK || json.Unmarshal(envelope.Data, &report) != nil {
 						t.Fatalf("auth status exit=%v output=%s", err, output)
 					}
+					if len(report.Providers) == 0 {
+						t.Fatalf("clean auth returned no provider readiness records: %s", envelope.Data)
+					}
 					for _, provider := range report.Providers {
 						if provider.Authenticated || len(provider.NextAction.Argv) == 0 {
 							t.Fatalf("clean auth unexpectedly ready: %+v", provider)
