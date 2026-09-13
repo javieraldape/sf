@@ -1426,10 +1426,14 @@ func signalGroup(pgid int, sig syscall.Signal) error {
 }
 
 type limitedBuffer struct {
-	bytes.Buffer
+	buffer    bytes.Buffer
 	limit     int
 	truncated bool
 }
+
+func (b *limitedBuffer) Bytes() []byte  { return b.buffer.Bytes() }
+func (b *limitedBuffer) Len() int       { return b.buffer.Len() }
+func (b *limitedBuffer) String() string { return b.buffer.String() }
 
 func (b *limitedBuffer) Write(p []byte) (int, error) {
 	before := b.Len()
@@ -1438,12 +1442,19 @@ func (b *limitedBuffer) Write(p []byte) (int, error) {
 		if n > len(p) {
 			n = len(p)
 		}
-		_, _ = b.Buffer.Write(p[:n])
+		_, _ = b.buffer.Write(p[:n])
 	}
 	if len(p) > b.limit-before {
 		b.truncated = true
 	}
 	return len(p), nil
+}
+
+// os.exec's pipe copy can select io.ReaderFrom instead of Write.
+// Hide ReaderFrom from the nested copy so every
+// byte passes through the bounded Write while the source still drains to EOF.
+func (b *limitedBuffer) ReadFrom(r io.Reader) (int64, error) {
+	return io.Copy(struct{ io.Writer }{b}, r)
 }
 
 func (b *limitedBuffer) exceeded() bool { return b.truncated }

@@ -134,14 +134,16 @@ func TestInstalledClaudeAuthoringPurposes(t *testing.T) {
 		// Finalization is independent of timeout/cancellation of inference, but
 		// bounded. Unclear drain retains the channel slot and stops this run.
 		finishCtx, stopFinish := context.WithTimeout(context.Background(), 10*time.Second)
-		if runErr != nil || !contracts.VerifyAuthoringProof(supervisor.PublicKey(), turn.Claim, epoch, proof) {
+		proofValid := contracts.VerifyAuthoringProof(supervisor.PublicKey(), turn.Claim, epoch, proof)
+		if runErr != nil || !proofValid {
 			if db.FinishAuthoringTurn(finishCtx, turn.Claim, proof, "failed", nil) != nil {
 				quarantineCtx, stopQuarantine := context.WithTimeout(context.Background(), 5*time.Second)
 				_ = db.MarkAuthoringUncertain(quarantineCtx, turn.Claim)
 				stopQuarantine()
 			}
 			stopFinish()
-			t.Fatal("real authoring turn failed or did not prove process drain; no retry attempted")
+			d := processsupervisor.AuthoringRunDiagnostics(runErr)
+			t.Fatalf("authoring failure: stage=%s exit_observed=%t exit_code=%d signal=%d capture_known=%t stdout_present=%t stderr_present=%t stdout_truncated=%t stderr_truncated=%t process_reported_hint=%s (advisory only; not origin/API proof) proof_valid=%t launch_count=%d; no retry attempted", d.Stage, d.ExitObserved, d.ExitCode, d.Signal, d.CaptureKnown, d.StdoutPresent, d.StderrPresent, d.StdoutTruncated, d.StderrTruncated, d.ProcessReportedHint, proofValid, launches)
 		}
 		storedLaunch, err := db.AuthoringTurn(finishCtx, domain.ChannelDev, session.ID, "only-turn")
 		if err != nil || launches != 1 || storedLaunch.State != "launched" || storedLaunch.Launch.PID <= 0 || storedLaunch.Launch.PID != storedLaunch.Launch.PGID || storedLaunch.Launch.BootIdentity == "" || storedLaunch.Launch.ProcessStartIdentity == "" {

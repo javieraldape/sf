@@ -2,6 +2,120 @@
 
 ## Current truth
 
+- Latest merge-authorized checkpoint: the `10cd088` CI-built real authoring
+  attempt also failed once (7.98s, process_exit/exit 1, no stdout, bounded
+  stderr, unclassified hint, one launch and valid drain proof). Home remains
+  unattempted; no retry followed. The reproduced capture/TMP repairs remain
+  valid, but they do not establish functioning real AI authoring. User has
+  authorized creating/merging this repair branch; PR/merge must disclose the
+  unresolved acceptance gate, preserve restrictions, and pass fresh CI.
+  Merging independently verified repairs does not complete the overall goal.
+
+- 2026-09-13: the explicitly approved corrected draft attempt ran ONCE from
+  verified `c62b45d` binaries and failed after 7.79s: process_exit/exit 1,
+  no stdout, bounded stderr, unclassified hint, one launch, valid drain proof.
+  Home intent was not attempted. No further model attempts are authorized.
+  The bare-mode repair was not sufficient for real authoring acceptance.
+- A separate no-model native regression reproduced a private TMP alias bug
+  in GitHub `34742246978`: canonical control passed; raw symlink path failed
+  TMP file access after HOME access passed. This Mac's TMPDIR uses `/var`,
+  which symlinks to `/private/var`. `10cd088` canonicalizes returned TMP and
+  its environment entry together, keeping the same private-directory scope
+  and original cleanup. GitHub `34742638116` PASSED on exact `10cd088`:
+  both native path cases and Claude/Cursor utility cleanup tests passed.
+  Real authoring remains unproven; the subsequent authorized `10cd088`
+  attempt failed as recorded above.
+
+- Latest resume supersedes the pending-approval notes below. One newly approved
+  draft diagnostic was used from verified `c376985` binaries: failed in 7.37s,
+  process_exit/exit 1, no stdout, bounded stderr present, unclassified hint,
+  one launch and valid drain proof. Home intent remains unattempted; no more
+  inference attempts are covered by that grant. API/billing occurrence unknown.
+- Test-only no-model preflight `70b2d1c21226a5aaed9b51eb06a633d293542b99`
+  passed GitHub ticket-entry `34739161854`. Verified CI artifact then passed
+  installed Darwin version/help sandbox preflight in 7.04s: both exit 0,
+  expected shapes, no stderr/truncation, Wait and group absence observed.
+  Empty private HOME/TMP, no credentials, no prompt/model, no live state.
+  This isolates basic native sandbox initialization as working, not the
+  authenticated print/schema drafting path. Exact drafting failure is unknown.
+  Follow-up branch is pushed; no new PR merge or installation occurred.
+
+- Full follow-up GitHub baseline `34737028195` PASSED all 31 jobs on
+  `096fc010d65fdae1e6b0ee9bb6e7dd3c03f5c8ed`. The repaired recovery race
+  scenario passed all three cases (same 287.11s, new leader 362.54s, synced
+  323.58s); no production assertion or timeout was relaxed. CLI/process-
+  supervisor code is unchanged from the passing `c376985` authoring artifact.
+  This supersedes the pending/failing CI status in the earlier checkpoint.
+  Real authoring remains incomplete: the last authorized draft retry failed
+  safely and another bounded diagnostic attempt is awaiting explicit approval.
+  No further provider call, follow-up merge, install or live runtime change.
+
+- Latest verified checkpoint: `fix/authoring-runtime-diagnostics` is pushed
+  through `c376985c1eaf6b57558a3142143e0a597ce695e8`. Its GitHub ticket-entry
+  run `34736496425` PASS (normal/race CLI, authoring, capture, connected journey,
+  build and repository/docs/secret checks). Broad repository-baseline
+  `34735980022` on capture fix `f97d415` failed only runtime-race shard 1:
+  prepared-amendment recovery/new_leader hit its eight-minute fixture deadline
+  at 480.08s with an evidence-conflict error. Other subcases passed; the same
+  unchanged case previously passed on main in 351.21s. Test-only bounded
+  workload-budget repair is in progress; production authority stays unchanged.
+  PR #11 remains merged at `638f231`; the follow-up is not merged or installed.
+- The explicitly approved additional draft retry WAS USED ONCE, from verified
+  `f97d415` CI binaries. Preparation passed Claude 2.1.263 / sonnet-4-6; the
+  turn failed after 6.96s: process_exit, exit code 1, stdout absent, stderr
+  present, neither truncated, launch_count=1, signed drain proof valid.
+  This does not establish whether an API request occurred. Home intent was
+  not attempted. No raw stderr was retained or displayed. Exact cause is
+  unknown; do not weaken guards or auto-retry. A new one-attempt approval
+  question is pending. Automatic goal continuations are not approval.
+- Capture regressions exposed inherited bytes.Buffer ReadFrom and WriteString
+  paths bypassing bounded Write. `f97d415` removes embedding, retaining bounded
+  explicit methods; real pipe and optimized-copy regressions pass in GitHub.
+  `310c7c8` adds a connected synthetic CLI draft/save/start/view/watch journey.
+  `c376985` adds closed advisory option-error hints, never raw provider text;
+  its compatibility with actual Claude stderr remains unverified. These fixes
+  do not prove real authoring success or human usability timing.
+- Latest verified artifact is `.context/authoring-acceptance-c376985`, not run.
+  Manifest head equals c376985; processsupervisor.test SHA256 is
+  `33bed1477564caa1559aa6b266b31a90db74a5dc6f5556e6ba974147c5e31006`;
+  sf-dev SHA256 is
+  `eb93e352676cf19c16d957b9ca9776353f9de4aed7e8d3aca50fd70164f177a7`.
+  No local automated builds/tests, live install, daemon or live DB changes.
+  Goal is incomplete pending real draft/home acceptance and user journey
+  observation. Old notes below are historical, including obsolete call counts.
+
+## Historical checkpoints
+
+- Resume after PR #11: post-merge repository-baseline run 34706300171 PASS.
+  Host PREPARE_ONLY now PASS (4.01s), so authrenewal is resolved. The two-turn
+  opt-in harness was run once from the SHA256-verified 53e6076 CI artifact:
+  preparation passed; first ticket_draft RunAuthoring failed at test line144
+  after 7.39s. Home intent was not attempted, no retry occurred. Generic
+  output does not prove whether the model API was reached or whether drain
+  proof was valid. Do not claim zero calls or paid success for this attempt.
+  Root created fix/authoring-runtime-diagnostics from merged main638f231;
+  lead/child are adding narrowly scoped safe diagnostics, not changing guards
+  or guessing a fix. No local builds/tests beyond authorized CI-built live
+  harness, no install/live daemon/DB mutation. Further paid retry requires
+  authorization; source/test instrumentation is not runtime acceptance.
+
+- 2026-09-12 latest: PR #11 MERGED by explicit user authorization, squash SHA
+  `638f231fff2043701194d15a2d9eadd936536440`, at 16:47:26Z. Exact source
+  `53e607603a8613d6e6ce9140d4a448b10b6cb547` passed all 61 GitHub checks;
+  no branch-protection bypass, install, live daemon or live DB changes.
+  The CI-built host PREPARE_ONLY check identified `authrenewal` in 0.62s:
+  Claude's stored OAuth credential cannot cover the required 46-minute
+  window. This is an expected prerequisite, not a newly proven code defect.
+  User must renew with `claude auth login` before the two still-authorized
+  real authoring turns. Zero model turns have been sent. Hidden max-turns
+  support is authenticated through status; closed diagnostics never expose
+  raw credentials. Goal remains active until real authoring acceptance.
+  Three consecutive goal turns confirmed authrenewal; pause repeated probes
+  until the user renews login. Final audit also requires the five-task CLI
+  journey record: separate tests exist, not a measured complete walkthrough.
+  Post-merge run 34706300171 is running, no failure observed, not yet passed.
+  The older entries below are historical. This post-merge checkpoint is local.
+
 - 2026-09-12 hosted acceptance: draft PR #11 is open, source HEAD
   `a9d3491078c2f8840a33c93fe34e3053185d2b2d`; all 61 GitHub checks PASS.
   Runs: repository-baseline `34703071966`, ticket-entry `34703071941`,

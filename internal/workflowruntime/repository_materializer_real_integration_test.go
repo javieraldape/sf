@@ -57,12 +57,20 @@ func newMaterializerRealFixture(t *testing.T, failBuild bool) materializerRealFi
 
 func newMaterializerRealFixtureWithProvider(t *testing.T, provider func(*testing.T) string) materializerRealFixture {
 	t.Helper()
+	return newMaterializerRealFixtureWithProviderBudget(t, provider, 8*time.Minute)
+}
+
+func newMaterializerRealFixtureWithProviderBudget(t *testing.T, provider func(*testing.T) string, budget time.Duration) materializerRealFixture {
+	t.Helper()
+	if budget <= 0 || budget > 12*time.Minute {
+		t.Fatal("materializer fixture budget must be positive and at most 12 minutes")
+	}
 	if runtime.GOOS != "darwin" {
 		t.Skip("guarded repository command execution is Darwin-only")
 	}
 	// Bound Store busy retries and child setup independently of the package's
 	// timeout, so a failed fixture reports its own boundary before job teardown.
-	deadline := time.Now().Add(8 * time.Minute)
+	deadline := time.Now().Add(budget)
 	if testDeadline, ok := t.Deadline(); ok && testDeadline.Add(-10*time.Second).Before(deadline) {
 		deadline = testDeadline.Add(-10 * time.Second)
 	}

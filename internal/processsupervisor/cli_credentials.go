@@ -154,8 +154,19 @@ func vettedCLIEnvironment(ctx context.Context, provider, expectedDigest string, 
 	if err != nil {
 		return nil, "", func() {}, err
 	}
+	// Seatbelt matches the resolved directory, not an alias such as /var.
+	// Keep vettedEnvironment's original cleanup closure while passing one
+	// canonical spelling to both the child environment and sandbox policy.
+	tmp, err = filepath.EvalSymlinks(tmp)
+	if err != nil {
+		cleanup()
+		return nil, "", func() {}, errCLICredentials
+	}
 	var home string
 	for index, value := range env {
+		if strings.HasPrefix(value, "TMPDIR=") {
+			env[index] = "TMPDIR=" + tmp
+		}
 		if strings.HasPrefix(value, "HOME=") {
 			home, err = filepath.EvalSymlinks(strings.TrimPrefix(value, "HOME="))
 			if err != nil {

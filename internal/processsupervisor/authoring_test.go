@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/nysa-company/sf/internal/authoring"
 	"github.com/nysa-company/sf/internal/contracts"
 	"github.com/nysa-company/sf/internal/domain"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"syscall"
 	"testing"
@@ -39,6 +41,38 @@ func TestAuthoringFixedNoToolsAndCombinedBound(t *testing.T) {
 	}
 	if _, err := authoringStdin(contracts.AuthoringInput{Purpose: "ticket_draft", Prompt: "draft"}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestAuthoringSubscriptionArgvAndPolicyBinding(t *testing.T) {
+	for _, purpose := range []string{"ticket_draft", "home_intent"} {
+		schema, _, err := authoring.SchemaForPurpose(purpose)
+		if err != nil {
+			t.Fatal(err)
+		}
+		argv, err := authoringPurposeArgv("claude-sonnet-4-6", purpose)
+		want := []string{"--print", "--output-format", "json", "--json-schema", schema, "--model", "claude-sonnet-4-6", "--restricted", "--safe-mode", "--no-session-persistence", "--permission-mode", "dontAsk", "--tools", "", "--allowedTools", "", "--disallowedTools", "mcp__*", "--strict-mcp-config", "--mcp-config", `{"mcpServers":{}}`, "--max-turns", "3"}
+		if err != nil || !reflect.DeepEqual(argv, want) {
+			t.Fatal("subscription authoring argv changed")
+		}
+		for _, argument := range argv {
+			if argument == "--bare" {
+				t.Fatal("bare mode excludes subscription authentication")
+			}
+		}
+	}
+	const oldPolicy = "sf.authoring.claude/v1:2.1.263:private-cwd:empty-tools:empty-mcp:bare:restricted:safe-mode:json-schema:no-persistence:max-turns3:structured-retries1:90s:64KiB:private-filesystem"
+	schemas := "\x00" + authoring.Schema + "\x00" + authoring.Instruction + "\x00" + authoring.HomeSchema + "\x00" + authoring.HomeInstruction
+	oldDigest := contracts.AuthoringDigest([]byte(oldPolicy + schemas))
+	newPolicy := strings.Replace(strings.Replace(oldPolicy, "/v1:", "/v2:", 1), ":bare:", ":subscription-oauth:", 1)
+	if authoringPolicyDigest() == oldDigest || authoringPolicyDigest() != contracts.AuthoringDigest([]byte(newPolicy+schemas)) {
+		t.Fatal("subscription policy was not immutably versioned")
+	}
+	digest := strings.Repeat("a", 64)
+	s := &Supervisor{authoringStages: map[string]trustedExecutable{"claude-sonnet-4-6": {digest: digest, authDigest: digest, policyDigest: authoringPolicyDigest()}}}
+	claim := contracts.AuthoringClaim{Identity: domain.ProviderIdentity{Provider: "claude", Model: "claude-sonnet-4-6", Family: "anthropic-claude", Version: "2.1.263"}, BinaryDigest: digest, AuthDigest: digest, PolicyDigest: oldDigest}
+	if _, _, err := s.acquireAuthoring(claim); !errors.Is(err, ErrUnclear) {
+		t.Fatal("old bare policy claim admitted under new subscription policy")
 	}
 }
 

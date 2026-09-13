@@ -25,7 +25,11 @@ func TestRepositoryMaterializerPostbuildAmendmentPreparedIndexRecovery(t *testin
 }
 
 func testPostbuildAmendmentPreparedIndexRecovery(t *testing.T, restart, synced bool) {
-	f := newMaterializerRealFixtureWithProvider(t, func(t *testing.T) string { return writeMaterializerAmendmentProvider(t, true) })
+	started := time.Now()
+	// This scenario includes five setup attempts, prepared-index recovery,
+	// epoch requalification and a fresh Builder under race-instrumented CI.
+	// Other materializer fixtures retain their eight-minute budget.
+	f := newMaterializerRealFixtureWithProviderBudget(t, func(t *testing.T) string { return writeMaterializerAmendmentProvider(t, true) }, 12*time.Minute)
 	f.worker.Engine = f.state.StateMachine
 	for _, want := range []domain.State{domain.StateVerifying, domain.StateBuilding, domain.StateBuilding, domain.StateVerifying} {
 		if result, err := f.worker.Run(f.ctx, f.ref, f.fence); err != nil || result.State != want {
@@ -173,8 +177,12 @@ func testPostbuildAmendmentPreparedIndexRecovery(t *testing.T, restart, synced b
 			t.Fatal(err)
 		}
 	}
+	deadline, _ := f.ctx.Deadline()
+	if err := f.ctx.Err(); err != nil {
+		t.Fatalf("before fresh Builder: context=%v elapsed=%s remaining=%s", err, time.Since(started), time.Until(deadline))
+	}
 	if result, err := f.worker.Run(f.ctx, f.ref, f.fence); err != nil || result.State != domain.StatePublishing {
-		t.Fatalf("fresh Builder=%+v err=%v", result, err)
+		t.Fatalf("fresh Builder=%+v err=%v context=%v elapsed=%s remaining=%s", result, err, f.ctx.Err(), time.Since(started), time.Until(deadline))
 	}
 	assertMaterializerProviderAttempts(t, f.db, f.ref, 6)
 }

@@ -110,7 +110,7 @@ func (s *Supervisor) observeClaudeOperation(ctx context.Context, executable, mod
 		}
 	}
 	if authoring {
-		for _, flag := range []string{"--bare", "--tools", "--permission-mode", "--allowedTools", "--disallowedTools"} {
+		for _, flag := range []string{"--tools", "--permission-mode", "--allowedTools", "--disallowedTools"} {
 			if !bytes.Contains(help, []byte(flag)) {
 				return fail("help", errCLIObservation)
 			}

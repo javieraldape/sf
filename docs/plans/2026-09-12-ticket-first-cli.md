@@ -1,6 +1,76 @@
 # Ticket-first CLI, AI authoring and live activity
 
-Status: implementation approved on 2026-09-12; work started on `feat/ticket-first-cli`. Source baseline: main `f632e81`. This is not a shipped-capability statement.
+Status: implementation approved on 2026-09-12; initial work from main `f632e81` merged through PR #11 at `638f231`. Follow-up validation is on `fix/authoring-runtime-diagnostics`. Real AI authoring acceptance remains incomplete; merged source is not proof of working installed inference.
+
+## Current verification checkpoint
+
+- Latest authorized `10cd088` installed run failed once in 7.98s with the
+  same process_exit/exit 1 and no stdout; bounded stderr remains unclassified.
+  One launch and signed drain proof were verified. Home intent did not run.
+  No automatic retry. The user authorized merging the independently tested
+  repair branch; the PR must disclose that real authoring is still incomplete.
+  The documented bare incompatibility and reproduced TMP bug were real,
+  but neither proves the remaining process-exit cause. Do not claim completion.
+
+- 2026-09-13: corrected `c62b45d` real draft attempt failed once in 7.79s,
+  exit 1/no stdout/bounded stderr/unclassified hint, one launch and valid
+  drain proof. No home turn or retry. Bare-mode correction was insufficient.
+  A no-model production-environment sandbox test then reproduced a separate
+  TMP alias bug: GitHub `34742246978` canonical control passed, symlinked
+  temporary path failed file access. `10cd088` normalizes TMP consistently
+  for environment/cwd/profile without widening access; `34742638116` passed
+  both native cases plus cleanup regressions and the full ticket-entry run.
+  The later authorized `10cd088` installed attempt failed as recorded above;
+  no live installation or ticket mutation occurred.
+
+- Source review found an independent documented auth-mode incompatibility:
+  authoring combined `--bare` with subscription OAuth. Claude's
+  [headless reference](https://code.claude.com/docs/en/headless) states bare
+  mode excludes subscription login; its [CLI reference](https://code.claude.com/docs/en/cli-reference)
+  says safe mode retains authentication. The correction removes only bare,
+  retains restricted/safe mode, empty tools/MCP, private HOME/CWD and native
+  sandbox, and versions the policy digest to reject old launch bindings.
+  Exact-argv and stale-policy regressions cover both purposes. This does not
+  yet establish that the incompatibility was the sole observed exit cause.
+
+- Latest approved diagnostic attempt was used once from `c376985`: failure
+  in 7.37s, exit 1, stdout absent, bounded stderr present, hint unclassified,
+  one launch and valid drain proof. API-request count remains unknown.
+  Home intent remains unused. The earlier pending-approval status is historical.
+- No-model native preflight `70b2d1c` passed GitHub `34739161854`; its verified
+  CI-built installed test passed in 7.04s. Both fixed version/help invocations
+  succeed inside the production authoring sandbox with empty private HOME/TMP,
+  no credentials, no stderr and observed process-group absence. This narrows
+  the unknown failure to the drafting path/authenticated environment, not basic
+  sandbox startup. No extra model attempt, installation or live mutation.
+
+- Full follow-up baseline `34737028195` passed all 31 jobs on `096fc01`,
+  including all three prepared-amendment recovery race cases. This supersedes
+  the earlier failing `f97d415` baseline below. The fixture repair changes only
+  this longer test's bounded budget and deadline diagnostics; production
+  authority, timeouts, and every recovery assertion remain unchanged.
+
+- PR #11 merged with all 61 required/reported checks passing; its post-merge
+  repository baseline `34706300171` passed. No live installation was performed.
+- Follow-up `c376985` passed GitHub ticket-entry `34736496425`, covering normal
+  and race CLI tests, no-model authoring/capture regressions, builds, and
+  repository/docs/secret checks. Broad baseline `34735980022` covers the
+  shared capture fix `f97d415` and failed the prepared-amendment recovery race
+  case at its eight-minute fixture deadline. The same unchanged test passed
+  on merged main in 351s; a narrowly scoped test-budget repair is being
+  validated without weakening recovery assertions or production timeouts.
+- The connected `TestTicketConnectedAuthoringSaveStartViewWatchJourney` proves
+  exact reviewed/saved source through explicit submit/start, scoped view and
+  active/quiet/disconnected/reconnected watch using one synthetic service.
+  This is command-composition evidence, not real inference or human timing.
+- One authorized retry of installed Claude 2.1.263 / sonnet-4-6 prepared
+  successfully, launched once, then exited with code 1 after 6.96s. It returned
+  no stdout, bounded stderr, and a valid signed drain proof. The cause and API
+  request count are unknown; the home-intent turn was not attempted. Another
+  model attempt requires new approval. No raw error text is exposed.
+- Completion still requires successful real draft and home-intent acceptance
+  and honest observation of the five-task user journey. Do not substitute
+  synthetic test timing or preparation success for those outcomes.
 
 ## Goal and decisions
 
@@ -70,7 +140,7 @@ Automated tests/builds run in GitHub under the existing user policy. Full Go sui
 
 Root owns scope, contracts, integration, evidence and review. Implementation lead delegates production coding to child agents. Luna handles bounded research and tests. Shared four-agent capacity requires explicit file ownership: after Luna completes a bounded task, the free slot can host a second coding child for an independent integration surface. Formatting/static diff checks only locally.
 
-Implementation checkpoint: all four packages have connected source and regression tests. Activity tests cover observation before exit, recorder refusal, bounded buffers/frames, stale attempts, reconnect/gaps and viewer detachment. Authoring includes async daemon integration, real-gate lifecycle fixtures, a Darwin native sandbox fixture, migration/reopen coverage, and a read-only interrupted-turn inspection command printed before inference. Home uses a closed seven-action schema and existing deterministic public handlers. Luna supplied independent content/context, activity, sandbox and home tests plus documentation. Root and the delivery lead reviewed source; this is not execution evidence. No automated tests or builds have run, and the implementation is not installed or released. Push/draft-PR authorization and GitHub validation remain pending.
+Initial implementation checkpoint (historical): all four packages had connected source and regression tests before GitHub validation. Activity coverage includes observation before exit, recorder refusal, bounded buffers/frames, stale attempts, reconnect/gaps and viewer detachment. Authoring includes async daemon integration, real-gate lifecycle fixtures, a Darwin native sandbox fixture, migration/reopen coverage, and a read-only interrupted-turn inspection command printed before inference. Home uses a closed seven-action schema and existing deterministic public handlers. Luna supplied independent content/context, activity, sandbox and home tests plus documentation. Root and the delivery lead reviewed source. See the current verification checkpoint above for executed checks and remaining acceptance gaps.
 
 Authoring uses separate v62 session/turn bookkeeping, immutable purpose/context/runtime binding, at most four consented SF turns per session, one undrained authoring launch per channel and a 90-second turn deadline. These are not provider API-request or hard billing caps. The initial safe operation is Claude-only, independently prepared without requiring execution-role qualification. Other providers remain explicitly unavailable for authoring until an equivalent boundary is implemented. Valid but undrainable authoring recovery retains quarantine and blocks further authoring, not ordinary ticket startup; malformed durable evidence still fails closed. Creation performs no inference, context stays in bounded daemon memory, and restart never automatically resends a turn.
 

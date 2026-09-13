@@ -15,7 +15,7 @@ func TestAuthoringObserverRequiresPinnedBoundedStatus(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("Darwin observer")
 	}
-	flags := []string{"--restricted", "--safe-mode", "--no-session-persistence", "--strict-mcp-config", "--json-schema", "--bare", "--tools", "--permission-mode", "--allowedTools", "--disallowedTools"}
+	flags := []string{"--restricted", "--safe-mode", "--no-session-persistence", "--strict-mcp-config", "--json-schema", "--tools", "--permission-mode", "--allowedTools", "--disallowedTools"}
 	const script = `#!/bin/sh
 case "$*" in
   --version) echo 'VERSION (Claude Code)' ;;
