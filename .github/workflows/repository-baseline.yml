@@ -123,7 +123,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -179,6 +179,8 @@ jobs:
             shard: 0
           - lane: daemon-race
             shard: 1
+          - lane: runtime-race
+            shard: 4
     steps:
       - uses: actions/checkout@v4
         with:

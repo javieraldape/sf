@@ -23,8 +23,8 @@ class RacePartitionTest(unittest.TestCase):
         self.assertEqual(set(targets), {"test-integration-other", "crash-other",
                                       "test-security", "test-upgrade", "test-compiled-e2e", "verify-static"})
         shards = re.search(r"shard: \[([^]]+)\]", workflow).group(1).split(", ")
-        self.assertEqual([int(i) for i in shards], list(range(8)))
-        self.assertIn('--count 8', (root / "Makefile").read_text())
+        self.assertEqual([int(i) for i in shards], list(range(10)))
+        self.assertIn('--count 10', (root / "Makefile").read_text())
         runtime = workflow.split("  runtime-integration:\n", 1)[1]
         runtime_shards = re.search(r"shard: \[([^]]+)\]", runtime).group(1).split(", ")
         self.assertEqual([int(i) for i in runtime_shards], list(range(4)))
@@ -38,22 +38,23 @@ class RacePartitionTest(unittest.TestCase):
         jobs = {(lane, shard) for lane, shard in itertools.product(lanes, balanced_shards)}
         included = [(lane, int(shard)) for lane, shard in
                     re.findall(r"- lane: ([a-z-]+)\n\s+shard: (\d+)", balanced)]
-        self.assertEqual(included, [("daemon-race", 0), ("daemon-race", 1)])
+        self.assertEqual(included, [("daemon-race", 0), ("daemon-race", 1),
+                                    ("runtime-race", 4)])
         self.assertNotIn("exclude:", balanced)
         jobs.update(included)
         expected_jobs = ({("daemon-race", shard) for shard in range(2)} |
-                         {(lane, shard) for lane in ("runtime-race", "crash-runtime")
-                          for shard in range(4)} |
+                         {("runtime-race", shard) for shard in range(5)} |
+                         {("crash-runtime", shard) for shard in range(4)} |
                          {("race-other", shard) for shard in range(4)})
         self.assertEqual(jobs, expected_jobs)
-        self.assertEqual(len(jobs), 14)
+        self.assertEqual(len(jobs), 15)
         makefile = (root / "Makefile").read_text()
         self.assertIn('runtime-race) python3 scripts/run-bounded --timeout 65m -- python3 scripts/ci-race.py runtime-race', makefile)
         self.assertIn('runtime-integration --index "$$SHARD" --count 4', makefile)
         self.assertIn('other --index "$$SHARD" --count 4', makefile)
         self.assertIn('daemon-race --index "$$SHARD" --count 2', makefile)
-        for mode in ("runtime-race", "crash-runtime"):
-            self.assertIn(f'{mode} --index "$$SHARD" --count 4', makefile)
+        self.assertIn('runtime-race --index "$$SHARD" --count 5', makefile)
+        self.assertIn('crash-runtime --index "$$SHARD" --count 4', makefile)
         reference = re.search(r"\ntest-integration:\n\t([^\n]+)", makefile).group(1).split()
         other = re.search(r"\ntest-integration-other:\n\t([^\n]+)", makefile).group(1).split()
         self.assertEqual([part for part in reference if part != "./internal/workflowruntime"], other)
