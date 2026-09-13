@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -510,9 +511,26 @@ func compiledDevWalkingSkeletonConfigured(t *testing.T, mergeMode domain.MergeMo
 		if err != nil {
 			t.Fatal(err)
 		}
+		defer readOnly.Close()
 		current, err := readOnly.Ticket(context.Background(), ref)
 		if err != nil || current.State != domain.StatePaused || current.Version != before {
 			t.Fatalf("restart changed PR endpoint pause: before=%d current=%+v err=%v", before, current, err)
+		}
+		if _, err := readOnly.LoadCIObservation(context.Background(), ref); !errors.Is(err, store.ErrNotFound) {
+			t.Fatalf("PR endpoint admitted CI before continuation: %v", err)
+		}
+		compiledWalkingSkeletonCLI(t, binary, home, "ticket", "resume", string(ref.Ticket), "--json")
+		resumed := wait(domain.StateWaitingCI)
+		if resumed.Version != before+1 {
+			t.Fatalf("endpoint continuation version=%d, want %d", resumed.Version, before+1)
+		}
+		compiledWalkingSkeletonCLI(t, binary, home, "ticket", "resume", string(ref.Ticket), "--json")
+		if err := github.SetChecks(1, contracts.RequiredCheck{Name: "unit", ExternalID: "unit-1", State: "success"}); err != nil {
+			t.Fatal(err)
+		}
+		wait(domain.StateWaitingApproval)
+		if github.MutationCount("pr_create") != 1 || github.MutationCount("pr_ready") != 0 || github.MutationCount("pr_merge") != 0 {
+			t.Fatal("endpoint continuation duplicated publication or bypassed approval")
 		}
 		return
 	}
