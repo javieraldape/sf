@@ -286,7 +286,7 @@ func (c Client) refreshFactoryPullRequest(ctx context.Context, prior, expected c
 		return PRMatch{}, ErrPolicyRefusal
 	}
 	var values []prWire
-	if err := c.json(ctx, &values, "pr", "list", "--repo", repoArg(prior.Repository), "--state", "all", "--limit", "100", "--json", prFields); err != nil {
+	if err := c.json(ctx, &values, "pr", "list", "--repo", repoArg(prior.Repository), "--head", prior.HeadRef, "--state", "all", "--limit", "100", "--json", prFields); err != nil {
 		return PRMatch{}, err
 	}
 	if len(values) == 100 {
@@ -881,7 +881,7 @@ func (c Client) observeFactoryPullRequest(ctx context.Context, want contracts.Pu
 		return PRMatch{}, ErrPolicyRefusal
 	}
 	var values []prWire
-	if err := c.json(ctx, &values, "pr", "list", "--repo", repoArg(want.Repository), "--state", "all", "--limit", "100", "--json", prFields); err != nil {
+	if err := c.json(ctx, &values, "pr", "list", "--repo", repoArg(want.Repository), "--head", want.HeadRef, "--state", "all", "--limit", "100", "--json", prFields); err != nil {
 		return PRMatch{}, err
 	}
 	if len(values) == 100 {
@@ -911,7 +911,10 @@ func (c Client) observeFactoryPullRequest(ctx context.Context, want contracts.Pu
 }
 
 // ObservePublicationCandidate inventories the bounded pull-request list for
-// the exact source and base selected for publication. It deliberately sees
+// the exact source and base selected for publication. The remote inventory is
+// filtered by bare head branch, never base, so unrelated repository history
+// cannot exhaust its bound and sibling-base conflicts remain visible. Every
+// returned owner/repository/ref is still authenticated locally. It deliberately sees
 // unmarked PRs as well: an open PR from this exact source branch is never
 // semantic absence, even when it targets a different base branch.
 // It returns found=false only when no open matching PR exists.
@@ -920,7 +923,7 @@ func (c Client) ObservePublicationCandidate(ctx context.Context, want contracts.
 		return PRMatch{}, false, ErrPolicyRefusal
 	}
 	var values []prWire
-	if err := c.json(ctx, &values, "pr", "list", "--repo", repoArg(want.Repository), "--state", "all", "--limit", "100", "--json", prFields); err != nil {
+	if err := c.json(ctx, &values, "pr", "list", "--repo", repoArg(want.Repository), "--head", want.HeadRef, "--state", "all", "--limit", "100", "--json", prFields); err != nil {
 		return PRMatch{}, false, err
 	}
 	if len(values) == 100 {
@@ -970,7 +973,7 @@ func (c Client) ObservePublishedPullRequest(ctx context.Context, want contracts.
 		return PRMatch{}, ErrPolicyRefusal
 	}
 	var values []prWire
-	if err := c.json(ctx, &values, "pr", "list", "--repo", repoArg(want.Repository), "--state", "all", "--limit", "100", "--json", prFields); err != nil {
+	if err := c.json(ctx, &values, "pr", "list", "--repo", repoArg(want.Repository), "--head", want.HeadRef, "--state", "all", "--limit", "100", "--json", prFields); err != nil {
 		return PRMatch{}, err
 	}
 	if len(values) == 100 {
@@ -1049,7 +1052,7 @@ func (c Client) ObserveExternalMerge(ctx context.Context, want contracts.PullReq
 		return PRMatch{}, ErrPolicyRefusal
 	}
 	var values []prWire
-	if err := c.json(ctx, &values, "pr", "list", "--repo", repoArg(want.Repository), "--state", "all", "--limit", "100", "--json", prFields); err != nil {
+	if err := c.json(ctx, &values, "pr", "list", "--repo", repoArg(want.Repository), "--head", want.HeadRef, "--state", "all", "--limit", "100", "--json", prFields); err != nil {
 		return PRMatch{}, err
 	}
 	if len(values) == 100 {
@@ -1113,7 +1116,7 @@ func (c Client) ObserveExternalMerge(ctx context.Context, want contracts.PullReq
 // retry.
 func (c Client) observeClosedPublicationConflict(ctx context.Context, want contracts.PullRequestIdentity) (bool, error) {
 	var values []prWire
-	if err := c.json(ctx, &values, "pr", "list", "--repo", repoArg(want.Repository), "--state", "all", "--limit", "100", "--json", prFields); err != nil {
+	if err := c.json(ctx, &values, "pr", "list", "--repo", repoArg(want.Repository), "--head", want.HeadRef, "--state", "all", "--limit", "100", "--json", prFields); err != nil {
 		return false, err
 	}
 	if len(values) == 100 {

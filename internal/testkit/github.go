@@ -1726,7 +1726,7 @@ func validateOfficialArgv(argv []string) error {
 			return fmt.Errorf("fake-gh: incomplete %s", key)
 		}
 	case "pr list":
-		for _, flag := range []string{"--repo", "--state", "--limit", "--json"} {
+		for _, flag := range []string{"--repo", "--head", "--state", "--limit", "--json"} {
 			allowed[flag] = true
 		}
 		if err := require("--state", "all"); err != nil {
@@ -1821,10 +1821,16 @@ func (f *FakeGH) runList(argv []string) ([]byte, error) {
 			if repo := option(argv, "--repo"); repo != "" && repo != pr.Identity.Repository.Owner+"/"+pr.Identity.Repository.Name {
 				continue
 			}
+			if head := option(argv, "--head"); head != "" && head != pr.Identity.HeadRef {
+				continue
+			}
 			// baseRefOid is the PR's recorded base identity, not the current
 			// protected-ref tip. Keeping the row's value visible lets strict
 			// publication inventory reject a stale/mismatched PR base witness.
 			results = append(results, prJSON(pr, pr.Identity.BaseOID))
+			if len(results) == 100 {
+				break
+			}
 		}
 		return false, nil
 	})

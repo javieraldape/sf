@@ -91,6 +91,12 @@ The approved normative design is in
   uncertain effect and is never blindly retried; explicit exact reconciliation
   is required before another mutation.
 
+  PR inventories are bounded to 100 rows for the exact source branch across
+  all states, not the latest 100 PRs in the repository. They deliberately do
+  not filter by target base, so an existing same-source PR against another
+  base still blocks duplicate publication. Full pages and conflicting source,
+  head, base, ownership, or numbered identity continue to fail closed.
+
 Protected-base refresh is a single guarded operation per ticket. Store first
 authenticates the exact remote tip, then appends an immutable reservation and
 prepared ordered two-parent anchor (old candidate head, new protected base).

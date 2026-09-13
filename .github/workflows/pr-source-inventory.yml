@@ -1,0 +1,63 @@
+name: pr-source-inventory
+on:
+  push:
+    branches: [fix/pr-source-inventory]
+  pull_request:
+    paths:
+      - internal/github/**
+      - internal/testkit/github.go
+      - .github/workflows/pr-source-inventory.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verification:
+    runs-on: macos-14
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Source inventory and publication regressions
+        run: go test -race -p 1 -count=1 ./internal/github ./internal/testkit ./internal/publication
+      - name: Prove regression against old unscoped adapter
+        run: |
+          set -eu
+          cp internal/github/github.go "$RUNNER_TEMP/github-fixed.go"
+          trap 'cp "$RUNNER_TEMP/github-fixed.go" internal/github/github.go' EXIT
+          git fetch --no-tags --depth=1 origin 1191765b57631a2c232f741385ed98e6ace86e4e
+          git show 1191765b57631a2c232f741385ed98e6ace86e4e:internal/github/github.go > internal/github/github.go
+          set +e
+          go test -p 1 -count=1 ./internal/github -run '^TestPublicationIgnoresUnrelatedRepositoryHistory$' -v > "$RUNNER_TEMP/baseline.log" 2>&1
+          result=$?
+          set -e
+          cat "$RUNNER_TEMP/baseline.log"
+          test "$result" -ne 0
+          grep -q 'scoped absence: found=false err=multiple factory-owned pull requests match identity' "$RUNNER_TEMP/baseline.log"
+          cp "$RUNNER_TEMP/github-fixed.go" internal/github/github.go
+          trap - EXIT
+      - name: Static checks
+        run: |
+          go vet ./internal/github ./internal/testkit ./internal/publication
+          scripts/repo-check
+          scripts/secret-scan
+      - name: Build checksummed candidate
+        run: |
+          make build-dev COMMIT="$(git rev-parse HEAD)" DEV_VERSION=0.1.0-dev.pr-source-inventory
+          (cd bin && shasum -a 256 sf-dev sf-git-exec-dev sf-git-credential-dev sf-ssh-dev github_known_hosts) > bin/SHA256SUMS
+          git rev-parse HEAD > bin/COMMIT
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pr-source-inventory-macos-arm64
+          path: |
+            bin/sf-dev
+            bin/sf-git-exec-dev
+            bin/sf-git-credential-dev
+            bin/sf-ssh-dev
+            bin/github_known_hosts
+            bin/SHA256SUMS
+            bin/COMMIT
+          if-no-files-found: error
