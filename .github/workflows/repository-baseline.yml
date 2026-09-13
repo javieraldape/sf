@@ -127,6 +127,7 @@ jobs:
         with:
           name: ci-timing-store-race-${{ matrix.shard }}
           path: .ci-timings
+          include-hidden-files: true
           if-no-files-found: warn
 
   balanced:
@@ -176,6 +177,7 @@ jobs:
         with:
           name: ci-timing-${{ matrix.lane }}-${{ matrix.shard }}
           path: .ci-timings
+          include-hidden-files: true
           if-no-files-found: warn
 
   runtime-integration:
@@ -224,4 +226,5 @@ jobs:
         with:
           name: ci-timing-runtime-integration-${{ matrix.shard }}
           path: .ci-timings
+          include-hidden-files: true
           if-no-files-found: warn
