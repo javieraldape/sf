@@ -85,6 +85,73 @@ func TestCorrectionWorktreeIdentityPermitsOnlyProtectedBaseRefresh(t *testing.T)
 	}
 }
 
+func TestPlannedDraftRebindsAfterRestartBeforeFirstDispatch(t *testing.T) {
+	ctx := context.Background()
+	db, err := store.Open(ctx, filepath.Join(t.TempDir(), "sf.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	projectPath := filepath.Join(t.TempDir(), "repo")
+	effective, err := config.Resolve(config.DefaultMachineLimits(), config.DefaultProject("app", projectPath), config.TicketOverride{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, digest, err := config.Snapshot(effective)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.CreateProject(ctx, store.Project{Channel: domain.ChannelDev, ID: "app", Path: projectPath, BaseRef: "main", ConfigGeneration: 1, ConfigDigest: digest, ConfigSnapshot: snapshot}); err != nil {
+		t.Fatal(err)
+	}
+	ref := domain.TicketRef{Channel: domain.ChannelDev, Project: "app", Ticket: "SF-planned-draft"}
+	source := []byte("planned draft recovery")
+	sum := sha256.Sum256(source)
+	if err := db.CreateTicket(ctx, store.Ticket{Ref: ref, SourceDigest: hex.EncodeToString(sum[:]), Source: source, Type: domain.TicketFeature, MergeMode: domain.MergeManual}); err != nil {
+		t.Fatal(err)
+	}
+	leader, err := db.AcquireLeader(ctx, domain.ChannelDev, "planned-draft")
+	if err != nil {
+		t.Fatal(err)
+	}
+	started, err := db.StartOrAdopt(ctx, ref, 1, "planned-draft", domain.Fence{LeaderEpoch: leader, RunnerEpoch: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository := contracts.RepositoryIdentity{Host: "github.com", Owner: "acme", Name: "app"}
+	identity := contracts.PullRequestIdentity{Repository: repository, HeadOwner: "acme", HeadRepository: "app", HeadRef: "sf/dev/planned-draft", HeadOID: strings.Repeat("a", 40), BaseRef: "main", BaseOID: strings.Repeat("c", 40), FactoryOwned: true}
+	key := draftKey(identity, "title", "body")
+	if _, err := db.PlanEffect(ctx, store.EffectPlan{SemanticKey: key, Ref: ref, Kind: "draft_pr", TicketVersion: started.Version, Fence: domain.Fence{LeaderEpoch: leader, RunnerEpoch: started.RunnerEpoch}, RequestDigest: githubboundary.CanonicalDraftPullRequestRequestDigest(identity, "title", "body")}); err != nil {
+		t.Fatal(err)
+	}
+	leader, err = db.AcquireLeader(ctx, domain.ChannelDev, "planned-draft-restart")
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, err := db.InvalidateRunner(ctx, ref, started.Version, domain.Fence{LeaderEpoch: leader, RunnerEpoch: started.RunnerEpoch})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fake, err := testkit.NewFakeGH(filepath.Join(t.TempDir(), "github.json"), repository)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := fake.SetAuthenticated(true); err != nil {
+		t.Fatal(err)
+	}
+	worker := Worker{Store: db, GitHub: fake}
+	fence := domain.Fence{LeaderEpoch: leader, RunnerEpoch: current.RunnerEpoch}
+	for i := 0; i < 2; i++ {
+		if _, _, err := worker.ensureDraft(ctx, current, fence, fake, identity, "title", "body", nil); err != nil {
+			t.Fatalf("planned draft recovery: %v", err)
+		}
+	}
+	effect, err := db.Effect(ctx, key)
+	if err != nil || effect.State != store.EffectConfirmed || effect.TicketVersion != current.Version || effect.LeaderEpoch != leader || effect.RunnerEpoch != current.RunnerEpoch || effect.ClaimEpoch != 1 || fake.MutationCount("pr_create") != 1 {
+		t.Fatalf("effect=%+v err=%v mutations=%d", effect, err, fake.MutationCount("pr_create"))
+	}
+}
+
 func TestDraftCorrectionReplansUnappliedUpdateAfterFenceBump(t *testing.T) {
 	runDraftCorrectionFenceRecovery(t, testkit.ResponseErrorBefore, 0, 1)
 }

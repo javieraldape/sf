@@ -41,6 +41,21 @@ jobs:
           trap - EXIT
       - name: Static checks
         run: |
+          set -eu
+          cp internal/publication/worker.go "$RUNNER_TEMP/worker-fixed.go"
+          trap 'cp "$RUNNER_TEMP/worker-fixed.go" internal/publication/worker.go' EXIT
+          git show FETCH_HEAD:internal/publication/worker.go > internal/publication/worker.go
+          set +e
+          go test -p 1 -count=1 ./internal/publication -run '^TestPlannedDraftRebindsAfterRestartBeforeFirstDispatch$' -v > "$RUNNER_TEMP/worker-baseline.log" 2>&1
+          result=$?
+          set -e
+          cat "$RUNNER_TEMP/worker-baseline.log"
+          test "$result" -ne 0
+          grep -q 'planned draft recovery:' "$RUNNER_TEMP/worker-baseline.log"
+          cp "$RUNNER_TEMP/worker-fixed.go" internal/publication/worker.go
+          trap - EXIT
+      - name: Vet and repository checks
+        run: |
           go vet ./internal/github ./internal/testkit ./internal/publication
           scripts/repo-check
           scripts/secret-scan

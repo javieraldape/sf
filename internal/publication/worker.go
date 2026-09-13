@@ -332,8 +332,10 @@ func (w Worker) ensureDraft(ctx context.Context, ticket store.Ticket, fence doma
 	// attempt but before it has replanned the effect. On restart the row is
 	// already failed, so ClaimEffect alone would retain the old ticket/leader
 	// identity and strand the retry. Failed is safe to rebind precisely because
-	// the preceding observation proved semantic absence.
-	if effect.State == store.EffectFailed && (effect.TicketVersion != ticket.Version || effect.LeaderEpoch != fence.LeaderEpoch || effect.RunnerEpoch != fence.RunnerEpoch) {
+	// the preceding observation proved semantic absence. Planned is also safe:
+	// it has never crossed the mutation boundary. Store repeats the exact request
+	// and state checks atomically; executing/uncertain effects never enter here.
+	if (effect.State == store.EffectPlanned || effect.State == store.EffectFailed) && (effect.TicketVersion != ticket.Version || effect.LeaderEpoch != fence.LeaderEpoch || effect.RunnerEpoch != fence.RunnerEpoch) {
 		effect, err = w.Store.PlanEffect(ctx, store.EffectPlan{SemanticKey: key, Ref: ticket.Ref, Kind: "draft_pr", TicketVersion: ticket.Version, Fence: fence, RequestDigest: request})
 		if err != nil {
 			return contracts.PullRequestIdentity{}, time.Time{}, err
