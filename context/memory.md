@@ -2,6 +2,16 @@
 
 ## Current truth
 
+- Full follow-up GitHub baseline `34737028195` PASSED all 31 jobs on
+  `096fc010d65fdae1e6b0ee9bb6e7dd3c03f5c8ed`. The repaired recovery race
+  scenario passed all three cases (same 287.11s, new leader 362.54s, synced
+  323.58s); no production assertion or timeout was relaxed. CLI/process-
+  supervisor code is unchanged from the passing `c376985` authoring artifact.
+  This supersedes the pending/failing CI status in the earlier checkpoint.
+  Real authoring remains incomplete: the last authorized draft retry failed
+  safely and another bounded diagnostic attempt is awaiting explicit approval.
+  No further provider call, follow-up merge, install or live runtime change.
+
 - Latest verified checkpoint: `fix/authoring-runtime-diagnostics` is pushed
   through `c376985c1eaf6b57558a3142143e0a597ce695e8`. Its GitHub ticket-entry
   run `34736496425` PASS (normal/race CLI, authoring, capture, connected journey,

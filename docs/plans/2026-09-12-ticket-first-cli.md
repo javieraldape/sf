@@ -4,6 +4,12 @@ Status: implementation approved on 2026-09-12; initial work from main `f632e81` 
 
 ## Current verification checkpoint
 
+- Full follow-up baseline `34737028195` passed all 31 jobs on `096fc01`,
+  including all three prepared-amendment recovery race cases. This supersedes
+  the earlier failing `f97d415` baseline below. The fixture repair changes only
+  this longer test's bounded budget and deadline diagnostics; production
+  authority, timeouts, and every recovery assertion remain unchanged.
+
 - PR #11 merged with all 61 required/reported checks passing; its post-merge
   repository baseline `34706300171` passed. No live installation was performed.
 - Follow-up `c376985` passed GitHub ticket-entry `34736496425`, covering normal
