@@ -81,6 +81,31 @@ func TestInitCheckRefusesInvalidConfigWithoutWritingState(t *testing.T) {
 	}
 }
 
+func TestInitCheckPureGoExplicitRecipeWithoutVendor(t *testing.T) {
+	repository, home := initializedRepository(t), t.TempDir()
+	if err := os.Mkdir(filepath.Join(repository, ".sf"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	files := map[string]string{
+		"go.mod":          "module example.test/app\ngo 1.25\nrequire example.test/unavailable v1.0.0\n",
+		"helpers.go":      "package helper\nimport \"path/filepath\"\nfunc Ext(p string) string { return filepath.Ext(p) }\n",
+		".sf/config.toml": "[commands]\nverify = ['go','--sf-go-pure-files-v1','helpers.go','helpers_test.go']\nreview = ['go','--sf-go-pure-files-v1','helpers.go','helpers_test.go']\n",
+	}
+	for name, data := range files {
+		if err := os.WriteFile(filepath.Join(repository, name), []byte(data), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	response := RunInitCheck(context.Background(), InitRequest{Channel: domain.ChannelDev, Repo: repository, Home: home})
+	if response.OK != (runtime.GOOS == "darwin") || response.Mutation.Attempted {
+		t.Fatalf("response=%+v", response)
+	}
+	entries, err := os.ReadDir(home)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("readiness mutated state: %v %v", entries, err)
+	}
+}
+
 func TestInitCheckExplainsUnsupportedStacksWithoutRunningThem(t *testing.T) {
 	for _, test := range []struct{ marker, content, reason string }{
 		{"pyproject.toml", "[project]\nname='example'\n", "Python requires the prepared python-pytest-v1 profile"},

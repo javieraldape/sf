@@ -41,6 +41,28 @@ explicit file may record another exact argv pair without shell interpretation,
 but that is CI/operator metadata: the local repository executor still admits
 only the exact dependency-closed Go, supported Node and prepared Python recipes
 described here.
+An explicit two-file pure Go recipe also works inside dependency-bearing Go
+repositories, without loading their module graph:
+
+```toml
+[commands]
+verify = ["go", "--sf-go-pure-files-v1", "internal/helpers.go", "internal/helpers_test.go"]
+review = ["go", "--sf-go-pure-files-v1", "internal/helpers.go", "internal/helpers_test.go"]
+```
+
+This recipe requires one source and its matching `_test.go` file in the same
+directory. Readiness may allow the test to be absent before the Reviewer writes
+it; execution requires both. Paths must be relative, canonical and nonsymlinked.
+Each source is limited to 1 MiB and may import only the code-owned pure standard
+library allowlist (including `testing`, `errors`, `path/filepath`, and `strings`).
+External/local package imports, cgo, embed, compiler directives, arbitrary flags,
+and additional files are refused. SF stages the parsed bytes privately, disables
+modules, workspace and network dependency resolution, and uses the existing
+tracked sandboxed Go test gate. This is helper-only verification, not full
+application or database integration coverage. No repository dependencies are
+installed or vendored by this recipe. It must be explicitly configured; normal
+Go detection is unchanged.
+
 Production start refuses unsupported stored verification/review recipes before
 planning; a TOML command is not permission to execute it.
 

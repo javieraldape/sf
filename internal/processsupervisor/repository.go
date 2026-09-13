@@ -113,7 +113,7 @@ func (s RepositoryCommandSupervisor) Run(ctx context.Context, claim contracts.Re
 	if !filepath.IsAbs(spec.Directory) || filepath.Clean(spec.Directory) != spec.Directory {
 		return contracts.CommandResult{}, ErrUnclear
 	}
-	useVendor, err := goclosure.Validate(spec.Directory)
+	useVendor, err := goclosure.ValidateCommand(spec.Directory, spec.Argv, false)
 	if err != nil {
 		if errors.Is(err, goclosure.ErrUnvendored) {
 			return contracts.CommandResult{}, ErrSubprocessRecipeUnsupported
@@ -180,8 +180,13 @@ func (s RepositoryCommandSupervisor) Run(ctx context.Context, claim contracts.Re
 	if err != nil {
 		return contracts.CommandResult{}, err
 	}
-	defer os.RemoveAll(home)
-	defer os.RemoveAll(tmp)
+	retainLaunch := false
+	defer func() {
+		if !retainLaunch {
+			_ = os.RemoveAll(home)
+			_ = os.RemoveAll(tmp)
+		}
+	}()
 	goRoot := filepath.Dir(filepath.Dir(resolved))
 	rootBinary, rootErr := filepath.EvalSymlinks(filepath.Join(goRoot, "bin", "go"))
 	if rootErr != nil || rootBinary != resolved {
@@ -191,7 +196,11 @@ func (s RepositoryCommandSupervisor) Run(ctx context.Context, claim contracts.Re
 	if err != nil {
 		return contracts.CommandResult{}, fmt.Errorf("stage Go toolchain: %w", err)
 	}
-	defer os.RemoveAll(filepath.Dir(stagedToolchain))
+	defer func() {
+		if !retainLaunch {
+			_ = os.RemoveAll(filepath.Dir(stagedToolchain))
+		}
+	}()
 	staged := filepath.Join(stagedToolchain, "bin", "go")
 	stagedDigest, digestErr := executableDigest(staged)
 	sourceDigest, sourceDigestErr := executableFileDigest(resolved)
@@ -234,16 +243,28 @@ func (s RepositoryCommandSupervisor) Run(ctx context.Context, claim contracts.Re
 	if useVendor {
 		env = append(env, "GOFLAGS=-mod=vendor")
 	}
+	files := spec.Argv[2:]
+	if _, _, pureErr := goclosure.PurePaths(spec.Argv); pureErr == nil {
+		files, err = goclosure.StagePure(runCtx, spec.Directory, spec.Argv, tmp)
+		if err != nil {
+			return contracts.CommandResult{}, ErrUnclear
+		}
+		env = append(env, "GO111MODULE=off", "GOFLAGS=", "GOPATH="+home)
+	}
 	self, err = stageRepositoryGate(self)
 	if err != nil {
 		return contracts.CommandResult{}, fmt.Errorf("stage repository gate: %w", err)
 	}
-	defer os.RemoveAll(filepath.Dir(self))
+	defer func() {
+		if !retainLaunch {
+			_ = os.RemoveAll(filepath.Dir(self))
+		}
+	}()
 	// Package execution is serial so the shared durable group-report/
 	// acknowledgement pipe cannot acknowledge a different test binary.
 	// -count=1 makes a verification actually execute rather than trust a prior
 	// Go cache result. Policy has already required the sole v1 recipe.
-	launchArgs := append([]string{"test", "-p=1", "-count=1", "-exec=" + self + " __repository_command_test_gate"}, spec.Argv[2:]...)
+	launchArgs := append([]string{"test", "-p=1", "-count=1", "-exec=" + self + " __repository_command_test_gate"}, files...)
 	gitFile, err := repositoryGitFilePath(identity)
 	if err != nil {
 		return contracts.CommandResult{}, ErrUnclear
@@ -297,6 +318,7 @@ func (s RepositoryCommandSupervisor) Run(ctx context.Context, claim contracts.Re
 		}
 		return contracts.CommandResult{}, err
 	}
+	retainLaunch = true
 	gateRead.Close()
 	if groupReportWrite != nil {
 		_ = groupReportWrite.Close()
@@ -413,6 +435,7 @@ func (s RepositoryCommandSupervisor) Run(ctx context.Context, claim contracts.Re
 		_ = lease.Quarantine()
 		return contracts.CommandResult{}, fmt.Errorf("repository test groups remain: %w", err)
 	}
+	retainLaunch = false
 	finishCtx, finishCancel := repositoryLeasePersistenceContext()
 	err = lease.FinishRepositoryCommandLaunch(finishCtx, launch)
 	finishCancel()

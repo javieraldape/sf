@@ -1,0 +1,52 @@
+name: go-pure-files
+on:
+  push:
+    branches: [feat/go-pure-files]
+  pull_request:
+    paths:
+      - internal/goclosure/**
+      - internal/processsupervisor/repository.go
+      - .github/workflows/go-pure-files.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verification:
+    runs-on: macos-14
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Closure and admission regressions
+        run: go test -race -p 1 -count=1 ./internal/goclosure ./internal/executionpolicy ./internal/config ./internal/cli ./internal/localruntime
+      - name: Real compiled Go gate
+        run: go test -p 1 -count=1 ./internal/processsupervisor -run '^TestRepositoryCommandRuns(GoTest|PureGoFiles)ThroughTrackedStrictGate$' -v
+      - name: Execution checkout readiness
+        run: go test -p 1 -count=1 ./internal/workflowruntime -run '^Test(ExecutionBase|PlannerChecksExecutionBase)' -v
+      - name: Vet and static checks
+        run: |
+          go vet ./internal/goclosure ./internal/executionpolicy ./internal/processsupervisor ./internal/workflowruntime
+          scripts/repo-check
+          scripts/docs-smoke
+          scripts/secret-scan
+      - name: Build pilot candidate bundle
+        run: |
+          make build-dev COMMIT="$(git rev-parse HEAD)" DEV_VERSION=0.1.0-dev.go-pure-files
+          (cd bin && shasum -a 256 sf-dev sf-git-exec-dev sf-git-credential-dev sf-ssh-dev github_known_hosts) > bin/SHA256SUMS
+          git rev-parse HEAD > bin/COMMIT
+      - uses: actions/upload-artifact@v4
+        with:
+          name: go-pure-files-macos-arm64
+          path: |
+            bin/sf-dev
+            bin/sf-git-exec-dev
+            bin/sf-git-credential-dev
+            bin/sf-ssh-dev
+            bin/github_known_hosts
+            bin/SHA256SUMS
+            bin/COMMIT
+          if-no-files-found: error
