@@ -16,20 +16,33 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  preflight:
+    name: CI partition preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python3 -B -m unittest discover -s scripts -p 'test_ci_race.py'
+
   acceptance:
     name: SF acceptance
     if: ${{ always() }}
-    needs: [baseline, store-race, runtime-integration, balanced]
+    needs: [preflight, baseline, store-race, runtime-integration, balanced]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Require every mandatory job to succeed
         env:
+          PREFLIGHT_RESULT: ${{ needs.preflight.result }}
           BASELINE_RESULT: ${{ needs.baseline.result }}
           STORE_RACE_RESULT: ${{ needs.store-race.result }}
           RUNTIME_INTEGRATION_RESULT: ${{ needs.runtime-integration.result }}
           BALANCED_RESULT: ${{ needs.balanced.result }}
         run: |
+          test "$PREFLIGHT_RESULT" = success
           test "$BASELINE_RESULT" = success
           test "$STORE_RACE_RESULT" = success
           test "$RUNTIME_INTEGRATION_RESULT" = success
@@ -38,6 +51,7 @@ jobs:
   baseline:
     # v1's production execution and compiled acceptance boundary is macOS.
     runs-on: macos-14
+    needs: preflight
     timeout-minutes: 90
     strategy:
       fail-fast: false
@@ -78,7 +92,6 @@ jobs:
           sudo mkdir -p /opt/homebrew/bin
           sudo ln -sfn "$setup_node" /opt/homebrew/bin/node
           test "$(readlink /opt/homebrew/bin/node)" = "$setup_node"
-      - run: python3 -B -m unittest discover -s scripts -p 'test_ci_race.py'
       - name: Run acceptance lane
         env:
           SF_CI_LANE: ${{ matrix.target }}
@@ -105,6 +118,7 @@ jobs:
     # on hosted macOS. Disjoint shards keep every test and each test's subtests.
     # Together with balanced race-other/runtime-race this is the full race suite.
     runs-on: macos-14
+    needs: preflight
     timeout-minutes: 75
     strategy:
       fail-fast: false
@@ -153,6 +167,7 @@ jobs:
     # Measured bottlenecks in run 34416329428: runtime race 48m, other race
     # 45m, crash 26m. Partition live inventories; timing hints only balance work.
     runs-on: macos-14
+    needs: preflight
     timeout-minutes: 75
     strategy:
       fail-fast: false
@@ -177,7 +192,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: python3 -B -m unittest discover -s scripts -p 'test_ci_race.py'
       - name: Run balanced acceptance shard
         env:
           SHARD: ${{ matrix.shard }}
@@ -203,6 +217,7 @@ jobs:
     # Complete normal integration inventory, including examples/fuzz seeds.
     # Every shard is required; no test-name hand-picked subset replaces it.
     runs-on: macos-14
+    needs: preflight
     timeout-minutes: 50
     strategy:
       fail-fast: false
@@ -226,7 +241,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: python3 -B -m unittest discover -s scripts -p 'test_ci_race.py'
       - name: Run workflow runtime integration shard
         env:
           SHARD: ${{ matrix.shard }}

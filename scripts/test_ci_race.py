@@ -44,11 +44,13 @@ class RacePartitionTest(unittest.TestCase):
         self.assertIn("cancel-in-progress: ${{ github.event_name == 'pull_request' }}", workflow)
         self.assertEqual(workflow.count("uses: actions/upload-artifact@v4"), 4)
         self.assertEqual(workflow.count("include-hidden-files: true"), 4)
+        self.assertEqual(workflow.count("python3 -B -m unittest discover -s scripts -p 'test_ci_race.py'"), 1)
         for job in ("baseline", "store-race", "balanced", "runtime-integration"):
             body = workflow.split(f"  {job}:\n", 1)[1]
             body = re.split(r"\n  [a-z-]+:\n", body, maxsplit=1)[0]
             self.assertIn("SF_CI_ARTIFACT_DIR: .ci-timings", body)
             self.assertIn("uses: actions/upload-artifact@v4", body)
+            self.assertIn("needs: preflight", body)
 
     def test_recovery_candidate_lanes_select_each_split_scenario_once(self):
         root = Path(__file__).resolve().parent.parent
@@ -88,7 +90,8 @@ class RacePartitionTest(unittest.TestCase):
         gate = workflow.split("  acceptance:\n", 1)[1].split("  baseline:\n", 1)[0]
         self.assertIn("name: SF acceptance", gate)
         self.assertIn("if: ${{ always() }}", gate)
-        self.assertIn("needs: [baseline, store-race, runtime-integration, balanced]", gate)
+        self.assertIn("needs: [preflight, baseline, store-race, runtime-integration, balanced]", gate)
+        self.assertIn("${{ needs.preflight.result }}", gate)
         self.assertIn("${{ needs.baseline.result }}", gate)
         self.assertIn("${{ needs.store-race.result }}", gate)
         self.assertIn("${{ needs.runtime-integration.result }}", gate)
@@ -98,15 +101,19 @@ class RacePartitionTest(unittest.TestCase):
         self.assertIn("${{ needs.balanced.result }}", gate)
         self.assertIn('test "$BALANCED_RESULT" = success', gate)
         commands = gate.split("        run: |\n", 1)[1]
-        for baseline, store, runtime, balanced in itertools.product(("success", "failure", "cancelled", "skipped", ""), repeat=4):
-            with self.subTest(baseline=baseline, store=store, runtime=runtime, balanced=balanced):
+        self.assertIn('test "$PREFLIGHT_RESULT" = success', gate)
+        result_names = ("PREFLIGHT_RESULT", "BASELINE_RESULT", "STORE_RACE_RESULT",
+                        "RUNTIME_INTEGRATION_RESULT", "BALANCED_RESULT")
+        # Preserve exhaustive combinations, extending the existing four-job
+        # matrix to include preflight rather than dropping multi-failure cases.
+        for outcomes in itertools.product(("success", "failure", "cancelled", "skipped", ""), repeat=5):
+            with self.subTest(outcomes=outcomes):
+                env = dict(zip(result_names, outcomes))
                 result = subprocess.run(
                     ["bash", "--noprofile", "--norc", "-e", "-c", commands],
-                    env={"BASELINE_RESULT": baseline, "STORE_RACE_RESULT": store,
-                         "RUNTIME_INTEGRATION_RESULT": runtime, "BALANCED_RESULT": balanced},
-                    capture_output=True, timeout=5)
+                    env=env, capture_output=True, timeout=5)
                 self.assertEqual(result.returncode == 0,
-                                 baseline == store == runtime == balanced == "success")
+                                 all(outcome == "success" for outcome in outcomes))
 
     def test_complete_disjoint_stable_partition(self):
         names = [f"TestCase{i}" for i in range(541)] + ["ExampleStore", "FuzzDecode"]
