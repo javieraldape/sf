@@ -63,7 +63,9 @@ func TestCompiledCleanStateReadinessRefusalsAndOfflineStacks(t *testing.T) {
 				cmd.Dir, cmd.Env = repository, env
 				return cmd.CombinedOutput()
 			}
-			if output, err := run("--help"); err != nil || !bytes.Contains(output, []byte("safe local software factory")) {
+			if output, err := run("--help"); err != nil ||
+				!bytes.Contains(output, []byte("Delegate a Markdown ticket to a local, operator-controlled software factory.")) ||
+				!bytes.Contains(output, []byte("ticket")) {
 				t.Fatalf("help exit=%v output=%s", err, output)
 			}
 			versionOutput, err := run("version", "--json")
