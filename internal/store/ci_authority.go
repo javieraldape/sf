@@ -662,31 +662,43 @@ func loadCICurrentPublicationAt(ctx context.Context, q ciQuery, ref domain.Ticke
 	if ticketLeader != 0 {
 		leader = ticketLeader
 	}
-	if state != string(domain.StateWaitingCI) || runner < publication.CurrentFence.RunnerEpoch || (runner == publication.CurrentFence.RunnerEpoch && leader != publication.CurrentFence.LeaderEpoch) {
-		return PublishedCandidateEvidence{}, ErrPublicationEvidence
-	}
 	// The publication->waiting_ci transition owns the first successor version.
 	// Recovery starts from that durable waiting-ci version; using the
 	// publication version here would incorrectly demand CI evidence for the
 	// publication transition itself.
 	waitingVersion := publication.CurrentTicketVersion + 1
-	if version == waitingVersion && runner == publication.CurrentFence.RunnerEpoch && leader == publication.CurrentFence.LeaderEpoch {
+	baselineVersion := waitingVersion
+	baselineFence := publication.CurrentFence
+	// An explicit first-PR continuation is a distinct authenticated CI
+	// baseline. Its one-shot consumption may bind the unchanged runner to a
+	// newer daemon leader, so never infer that authority from ticket versions.
+	if waitingVersion <= ^uint64(0)-2 && version >= waitingVersion+2 && authenticatePREndpointResume(ctx, q, ref, waitingVersion+2) == nil {
+		endpointFence, fenceErr := prEndpointResumeFence(ctx, q, ref, waitingVersion+2)
+		if fenceErr != nil {
+			return PublishedCandidateEvidence{}, fenceErr
+		}
+		baselineVersion, baselineFence = waitingVersion+2, endpointFence
+	}
+	if state != string(domain.StateWaitingCI) || runner < baselineFence.RunnerEpoch || (runner == baselineFence.RunnerEpoch && leader != baselineFence.LeaderEpoch) {
+		return PublishedCandidateEvidence{}, ErrPublicationEvidence
+	}
+	if version == baselineVersion && runner == baselineFence.RunnerEpoch && leader == baselineFence.LeaderEpoch {
 		// The shared validator proves the untouched publication->waiting
 		// baseline, including rejection of a recovery row at that version.
-		if err := validateWaitingRecoveryLedger(ctx, q, ref, waitingVersion, publication.CurrentFence.RunnerEpoch, publication.CurrentFence.LeaderEpoch, version, runner, leader); err != nil {
+		if err := validateWaitingRecoveryLedger(ctx, q, ref, baselineVersion, baselineFence.RunnerEpoch, baselineFence.LeaderEpoch, version, runner, leader); err != nil {
 			return PublishedCandidateEvidence{}, errors.Join(ciPublicationFailure("waiting recovery baseline"), err)
 		}
-	} else if runner == publication.CurrentFence.RunnerEpoch && leader == publication.CurrentFence.LeaderEpoch {
+	} else if runner == baselineFence.RunnerEpoch && leader == baselineFence.LeaderEpoch {
 		// Once a pending CI self-transition exists, the generic recovery helper
 		// quite correctly sees a live version beyond its recovery baseline. The
 		// CI-specific validator accounts for those exact evidence rows.
-		if err := validateCIRecoveryLedger(ctx, q, ref, waitingVersion, publication.CurrentFence.RunnerEpoch, publication.CurrentFence.LeaderEpoch, version, runner, leader); err != nil {
+		if err := validateCIRecoveryLedger(ctx, q, ref, baselineVersion, baselineFence.RunnerEpoch, baselineFence.LeaderEpoch, version, runner, leader); err != nil {
 			return PublishedCandidateEvidence{}, errors.Join(ciPublicationFailure("pending CI chain"), err)
 		}
-	} else if err := validateWaitingRecoveryLedger(ctx, q, ref, waitingVersion, publication.CurrentFence.RunnerEpoch, publication.CurrentFence.LeaderEpoch, version, runner, leader); err != nil {
+	} else if err := validateWaitingRecoveryLedger(ctx, q, ref, baselineVersion, baselineFence.RunnerEpoch, baselineFence.LeaderEpoch, version, runner, leader); err != nil {
 		// A legitimate recovery may have pending CI evidence between ledger
 		// rows; the CI-specific validator supplies that contiguous-gap proof.
-		if err2 := validateCIRecoveryLedger(ctx, q, ref, waitingVersion, publication.CurrentFence.RunnerEpoch, publication.CurrentFence.LeaderEpoch, version, runner, leader); err2 != nil {
+		if err2 := validateCIRecoveryLedger(ctx, q, ref, baselineVersion, baselineFence.RunnerEpoch, baselineFence.LeaderEpoch, version, runner, leader); err2 != nil {
 			return PublishedCandidateEvidence{}, errors.Join(ciPublicationFailure("recovery with pending CI chain"), err2)
 		}
 	}
@@ -710,7 +722,7 @@ func loadCICurrentPublicationAt(ctx context.Context, q ciQuery, ref domain.Ticke
 	// A single exhausted-poll -> operator-resume pair consumes two ticket
 	// versions without an external CI observation. It is distinct from a
 	// pending observation and is accepted only by its exact immutable events.
-	pollPair, hasPollPair, err := findCIPollResumePair(ctx, q, ref, waitingVersion, version)
+	pollPair, hasPollPair, err := findCIPollResumePair(ctx, q, ref, baselineVersion, version)
 	if err != nil {
 		return PublishedCandidateEvidence{}, err
 	}
@@ -718,13 +730,13 @@ func loadCICurrentPublicationAt(ctx context.Context, q ciQuery, ref domain.Ticke
 	if hasPollPair {
 		pollControlVersions = 2
 	}
-	rows, err := q.QueryContext(ctx, `SELECT c.ticket_version,c.event_id,c.event_created_at,c.candidate_generation,c.candidate_head_sha,c.candidate_tree_sha,c.observation_classification,c.observation_digest,c.observation_ticket_version,c.observation_leader_epoch,c.observation_runner_epoch,c.prior_publication_witness_digest,c.prior_state,c.resulting_state,c.resulting_trigger,c.transition_digest,e.id,e.created_at,e.from_state,e.to_state,e.trigger,e.payload FROM ci_transition_evidence c JOIN events e ON e.channel=c.channel AND e.project_id=c.project_id AND e.ticket_id=c.ticket_id AND e.ticket_version=c.ticket_version AND e.id=c.event_id WHERE c.channel=? AND c.project_id=? AND c.ticket_id=? AND c.ticket_version>? ORDER BY c.ticket_version`, ref.Channel, ref.Project, ref.Ticket, waitingVersion)
+	rows, err := q.QueryContext(ctx, `SELECT c.ticket_version,c.event_id,c.event_created_at,c.candidate_generation,c.candidate_head_sha,c.candidate_tree_sha,c.observation_classification,c.observation_digest,c.observation_ticket_version,c.observation_leader_epoch,c.observation_runner_epoch,c.prior_publication_witness_digest,c.prior_state,c.resulting_state,c.resulting_trigger,c.transition_digest,e.id,e.created_at,e.from_state,e.to_state,e.trigger,e.payload FROM ci_transition_evidence c JOIN events e ON e.channel=c.channel AND e.project_id=c.project_id AND e.ticket_id=c.ticket_id AND e.ticket_version=c.ticket_version AND e.id=c.event_id WHERE c.channel=? AND c.project_id=? AND c.ticket_id=? AND c.ticket_version>? ORDER BY c.ticket_version`, ref.Channel, ref.Project, ref.Ticket, baselineVersion)
 	if err != nil {
 		return PublishedCandidateEvidence{}, normalizeBusy(ctx, err)
 	}
 	defer rows.Close()
-	expectedVersion := waitingVersion + 1
-	chainRunner, chainLeader := publication.CurrentFence.RunnerEpoch, publication.CurrentFence.LeaderEpoch
+	expectedVersion := baselineVersion + 1
+	chainRunner, chainLeader := baselineFence.RunnerEpoch, baselineFence.LeaderEpoch
 	chainCount := 0
 	for rows.Next() {
 		if hasPollPair && expectedVersion == pollPair.exhaustedVersion {
@@ -750,9 +762,9 @@ func loadCICurrentPublicationAt(ctx context.Context, q ciQuery, ref domain.Ticke
 			}
 			expectedVersion = uint64(evidenceVersion)
 		}
-		if evidenceVersion == int64(expectedVersion) && evidenceVersion > int64(waitingVersion+1) {
+		if evidenceVersion == int64(expectedVersion) && evidenceVersion > int64(baselineVersion+1) {
 			var recoveredRunner, recoveredLeader uint64
-			err := q.QueryRowContext(ctx, `SELECT runner_epoch,leader_epoch FROM runner_recovery_ledger WHERE channel=? AND project_id=? AND ticket_id=? AND ticket_version>=? AND ticket_version<? ORDER BY ticket_version DESC LIMIT 1`, ref.Channel, ref.Project, ref.Ticket, waitingVersion, evidenceVersion).Scan(&recoveredRunner, &recoveredLeader)
+			err := q.QueryRowContext(ctx, `SELECT runner_epoch,leader_epoch FROM runner_recovery_ledger WHERE channel=? AND project_id=? AND ticket_id=? AND ticket_version>=? AND ticket_version<? ORDER BY ticket_version DESC LIMIT 1`, ref.Channel, ref.Project, ref.Ticket, baselineVersion, evidenceVersion).Scan(&recoveredRunner, &recoveredLeader)
 			if err == nil {
 				chainRunner, chainLeader = recoveredRunner, recoveredLeader
 			} else if !errors.Is(err, sql.ErrNoRows) {
@@ -778,10 +790,10 @@ func loadCICurrentPublicationAt(ctx context.Context, q ciQuery, ref domain.Ticke
 		return PublishedCandidateEvidence{}, ErrPublicationEvidence
 	}
 	var recoveryCount int
-	if hasPollPair && (pollPair.exhaustedVersion < waitingVersion+1 || pollPair.resumeVersion > version) {
+	if hasPollPair && (pollPair.exhaustedVersion < baselineVersion+1 || pollPair.resumeVersion > version) {
 		return PublishedCandidateEvidence{}, ciPublicationFailure("poll resume placement")
 	}
-	if err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM runner_recovery_ledger WHERE channel=? AND project_id=? AND ticket_id=? AND ticket_version>? AND ticket_version<=?`, ref.Channel, ref.Project, ref.Ticket, waitingVersion, version).Scan(&recoveryCount); err != nil || chainCount+recoveryCount+int(pollControlVersions) != int(version-waitingVersion) {
+	if err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM runner_recovery_ledger WHERE channel=? AND project_id=? AND ticket_id=? AND ticket_version>? AND ticket_version<=?`, ref.Channel, ref.Project, ref.Ticket, baselineVersion, version).Scan(&recoveryCount); err != nil || chainCount+recoveryCount+int(pollControlVersions) != int(version-baselineVersion) {
 		return PublishedCandidateEvidence{}, ciPublicationFailure("pending CI chain cardinality")
 	}
 	return publication, nil

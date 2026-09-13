@@ -453,6 +453,9 @@ func TestPREndpointSurvivesPausedLeadersAndPostResumeRecovery(t *testing.T) {
 	if _, err := db.LoadPublishedCandidate(ctx, ticket.Ref); err != nil {
 		t.Fatalf("post-resume publication: %v", err)
 	}
+	if _, err := loadCICurrentPublication(ctx, db.db, ticket.Ref); err != nil {
+		t.Fatalf("post-resume CI publication: %v", err)
+	}
 	nextLeader, err := db.AcquireLeader(ctx, domain.ChannelDev, "endpoint-resumed")
 	if err != nil {
 		t.Fatal(err)
@@ -462,6 +465,9 @@ func TestPREndpointSurvivesPausedLeadersAndPostResumeRecovery(t *testing.T) {
 	}
 	if _, err := db.LoadPublishedCandidate(ctx, ticket.Ref); err != nil {
 		t.Fatalf("post-recovery publication: %v (resumed=%+v)", err, resumed)
+	}
+	if _, err := loadCICurrentPublication(ctx, db.db, ticket.Ref); err != nil {
+		t.Fatalf("post-recovery CI publication: %v (resumed=%+v)", err, resumed)
 	}
 }
 
