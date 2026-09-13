@@ -149,7 +149,7 @@ func RunInitCheck(ctx context.Context, request InitRequest) api.Response {
 		var closureErr error
 		switch filepath.Base(command.Argv[0]) {
 		case "go":
-			_, closureErr = goclosure.Validate(request.Repo)
+			_, closureErr = goclosure.ValidateCommand(request.Repo, command.Argv, true)
 		case "node":
 			if len(command.Argv) == 3 && command.Argv[1] == nysapure.RecipeFlag {
 				closureErr = nysapure.Validate(request.Repo, command.Argv[2])

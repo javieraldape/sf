@@ -296,6 +296,14 @@ func (l *repositoryTestLease) groupCount() int {
 // binary. It catches a broken -exec word split or inherited-FD handshake that
 // unit tests of the profile alone cannot see.
 func TestRepositoryCommandRunsGoTestThroughTrackedStrictGate(t *testing.T) {
+	runRepositoryGoGateFixture(t, false)
+}
+
+func TestRepositoryCommandRunsPureGoFilesThroughTrackedStrictGate(t *testing.T) {
+	runRepositoryGoGateFixture(t, true)
+}
+
+func runRepositoryGoGateFixture(t *testing.T, pure bool) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("repository command product boundary is macOS")
 	}
@@ -314,6 +322,20 @@ func TestRepositoryCommandRunsGoTestThroughTrackedStrictGate(t *testing.T) {
 	}
 	if err := os.WriteFile(filepath.Join(repo, "proof_test.go"), []byte("package repository\nimport \"testing\"\nfunc TestProof(t *testing.T) {}\n"), 0o600); err != nil {
 		t.Fatal(err)
+	}
+	if pure {
+		if err := os.WriteFile(filepath.Join(repo, "go.mod"), []byte("module example.test/repository\ngo 1.25.0\nrequire example.test/unavailable v1.0.0\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(repo, "proof.go"), []byte("package repository\nfunc Value() int { return 7 }\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(repo, "proof_test.go"), []byte("package repository\nimport \"testing\"\nfunc TestProof(t *testing.T) { if Value() != 7 { t.Fatal(\"wrong source\") } }\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(repo, "unselected.go"), []byte("this invalid source must never compile"), 0600); err != nil {
+			t.Fatal(err)
+		}
 	}
 	mustRepositoryCommand(t, repo, "git", "add", ".")
 	mustRepositoryCommand(t, repo, "git", "commit", "-m", "initial")
@@ -356,6 +378,9 @@ func TestRepositoryCommandRunsGoTestThroughTrackedStrictGate(t *testing.T) {
 	// repository suite; the product accepts up to 45 minutes and this test
 	// remains deliberately far below that cap.
 	spec := contracts.CommandSpec{Argv: []string{"go", "test", "./..."}, Directory: worktree, Timeout: 60 * time.Second, Profile: contracts.ProfileGuarded}
+	if pure {
+		spec.Argv = []string{"go", goclosure.PureFlag, "proof.go", "proof_test.go"}
+	}
 	policy, err := executionpolicy.NewCommandSnapshot(spec.Argv)
 	if err != nil {
 		t.Fatal(err)

@@ -21,10 +21,9 @@ func CheckExecutionBaseDependencies(ctx context.Context, effective config.Effect
 	}
 	for _, command := range []config.Command{effective.Commands.Verify, effective.Commands.Review} {
 		if len(command.Argv) != 0 && filepath.Base(command.Argv[0]) == "go" {
-			if _, err := goclosure.Validate(worktree); err != nil {
+			if _, err := goclosure.ValidateCommand(worktree, command.Argv, true); err != nil {
 				return diagnosticError{code: "execution_base_dependencies", err: ErrExecutionBaseDependencies}
 			}
-			break
 		}
 	}
 	return ctx.Err()

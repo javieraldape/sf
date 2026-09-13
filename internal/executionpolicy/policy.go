@@ -17,6 +17,7 @@ import (
 
 	"github.com/nysa-company/sf/internal/contracts"
 	"github.com/nysa-company/sf/internal/domain"
+	"github.com/nysa-company/sf/internal/goclosure"
 	"github.com/nysa-company/sf/internal/nysapure"
 	"github.com/nysa-company/sf/internal/pythonclosure"
 )
@@ -217,6 +218,9 @@ func evaluateNodeVerification(argv []string) CommandDecision {
 // hermetic recipe.  Repositories whose tests need another command (including
 // subprocess-using tests) require explicit operator takeover.
 func evaluateGoVerification(argv []string) CommandDecision {
+	if _, _, err := goclosure.PurePaths(argv); err == nil {
+		return CommandDecision{Allowed: true, Code: "allowed_go_pure_files_v1", Reason: "exact bounded two-file Go recipe; staged source and imports are authenticated before launch"}
+	}
 	if len(argv) != 3 || argv[1] != "test" || argv[2] != "./..." {
 		return deny("go_recipe_forbidden", "only the hermetic recipe `go test ./...` is eligible; flags, tool selection, outputs, module changes, cgo, and subprocess-dependent tests require operator takeover")
 	}
