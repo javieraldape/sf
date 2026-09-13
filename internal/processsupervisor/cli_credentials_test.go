@@ -119,6 +119,72 @@ func TestCLIEnvironmentRejectsCredentialReplacement(t *testing.T) {
 	}
 }
 
+func TestAuthoringCLIEnvironmentCanonicalTemporaryAndCleanup(t *testing.T) {
+	for _, provider := range []string{"claude", "cursor"} {
+		t.Run(provider, func(t *testing.T) {
+			lookup := func(context.Context, string, string) ([]byte, error) {
+				if provider == "claude" {
+					return json.Marshal(map[string]any{"claudeAiOauth": map[string]any{"accessToken": "fixture-only", "expiresAt": time.Now().Add(time.Hour).UnixMilli()}})
+				}
+				return []byte("fixture-only"), nil
+			}
+			_, digest, err := prepareCLICredentials(context.Background(), provider, credentialHome(t), lookup)
+			if err != nil {
+				t.Fatal("synthetic credential setup failed")
+			}
+			root := credentialHome(t)
+			physical, alias := filepath.Join(root, "physical"), filepath.Join(root, "alias")
+			if os.Mkdir(physical, 0700) != nil || os.Symlink(physical, alias) != nil {
+				t.Fatal("temporary alias fixture failed")
+			}
+			t.Setenv("TMPDIR", alias)
+			env, temporary, cleanup, err := vettedCLIEnvironment(context.Background(), provider, digest, lookup)
+			if err != nil {
+				t.Fatal("canonical environment failed")
+			}
+			defer cleanup()
+			resolved, err := filepath.EvalSymlinks(temporary)
+			if err != nil || temporary != resolved || !strings.HasPrefix(temporary, physical+string(os.PathSeparator)) {
+				t.Fatal("temporary return retained alias or escaped root")
+			}
+			home, temporaryEntries := "", 0
+			for _, value := range env {
+				if strings.HasPrefix(value, "HOME=") {
+					home = strings.TrimPrefix(value, "HOME=")
+				}
+				if strings.HasPrefix(value, "TMPDIR=") {
+					temporaryEntries++
+					if value != "TMPDIR="+temporary {
+						t.Fatal("environment and sandbox temporary paths differ")
+					}
+				}
+			}
+			resolvedHome, err := filepath.EvalSymlinks(home)
+			if err != nil || home != resolvedHome || temporaryEntries != 1 {
+				t.Fatal("home or temporary environment invalid")
+			}
+			cleanup()
+			for _, path := range []string{home, temporary} {
+				if _, err := os.Stat(path); !os.IsNotExist(err) {
+					t.Fatal("original cleanup failed through alias")
+				}
+			}
+			failedLookup := func(context.Context, string, string) ([]byte, error) {
+				return nil, errors.New("synthetic lookup failure")
+			}
+			failedEnv, failedTemporary, failedCleanup, err := vettedCLIEnvironment(context.Background(), provider, digest, failedLookup)
+			failedCleanup()
+			if err == nil || failedEnv != nil || failedTemporary != "" {
+				t.Fatal("credential failure returned an environment")
+			}
+			entries, err := os.ReadDir(physical)
+			if err != nil || len(entries) != 0 {
+				t.Fatal("failed environment left private directories")
+			}
+		})
+	}
+}
+
 // Opt-in host compatibility check. Credentials are read only by the fixed
 // lookup and passed only to an installed CLI status command. Never logs the
 // environment, payload, stdout, stderr or account details. No model call.

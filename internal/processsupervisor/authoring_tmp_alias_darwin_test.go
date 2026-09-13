@@ -50,6 +50,10 @@ func TestAuthoringSandboxProductionTemporaryAlias(t *testing.T) {
 					t.Fatal("fixture alias unavailable")
 				}
 			}
+			resolvedSelected, err := filepath.EvalSymlinks(selected)
+			if err != nil || resolvedSelected != physical || (selected != resolvedSelected) != alias {
+				t.Fatal("fixture did not exercise the selected input alias")
+			}
 			outside := filepath.Join(root, "outside.txt")
 			if os.WriteFile(outside, []byte("outside-fixed-sentinel"), 0600) != nil {
 				t.Fatal("fixture sentinel unavailable")
@@ -83,11 +87,11 @@ func TestAuthoringSandboxProductionTemporaryAlias(t *testing.T) {
 				t.Fatal("fixture environment escaped its selected temporary root")
 			}
 			t.Logf("fixture alias_parent=%t returned_alias_spelling=%t", alias, temporary != resolvedTemporary)
-			if (temporary != resolvedTemporary) != alias {
-				t.Fatal("fixture did not exercise the expected temporary alias spelling")
+			if temporary != resolvedTemporary {
+				t.Fatal("production temporary directory was not canonicalized")
 			}
-			// Do not canonicalize temporary: exercising that exact production
-			// profile/cwd/env spelling is the purpose of the raw-alias case.
+			// Use the production return unchanged; normalization belongs to the
+			// production environment boundary, not this native fixture.
 			prefix, err := authoringSandboxCommand(trustedExecutable{stagedDir: filepath.Dir(self), stagedPath: self}, home, temporary)
 			if err != nil {
 				t.Fatal("production authoring profile refused")
