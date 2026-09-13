@@ -2,6 +2,36 @@
 
 ## Current truth
 
+- Resume after PR #11: post-merge repository-baseline run 34706300171 PASS.
+  Host PREPARE_ONLY now PASS (4.01s), so authrenewal is resolved. The two-turn
+  opt-in harness was run once from the SHA256-verified 53e6076 CI artifact:
+  preparation passed; first ticket_draft RunAuthoring failed at test line144
+  after 7.39s. Home intent was not attempted, no retry occurred. Generic
+  output does not prove whether the model API was reached or whether drain
+  proof was valid. Do not claim zero calls or paid success for this attempt.
+  Root created fix/authoring-runtime-diagnostics from merged main638f231;
+  lead/child are adding narrowly scoped safe diagnostics, not changing guards
+  or guessing a fix. No local builds/tests beyond authorized CI-built live
+  harness, no install/live daemon/DB mutation. Further paid retry requires
+  authorization; source/test instrumentation is not runtime acceptance.
+
+- 2026-09-12 latest: PR #11 MERGED by explicit user authorization, squash SHA
+  `638f231fff2043701194d15a2d9eadd936536440`, at 16:47:26Z. Exact source
+  `53e607603a8613d6e6ce9140d4a448b10b6cb547` passed all 61 GitHub checks;
+  no branch-protection bypass, install, live daemon or live DB changes.
+  The CI-built host PREPARE_ONLY check identified `authrenewal` in 0.62s:
+  Claude's stored OAuth credential cannot cover the required 46-minute
+  window. This is an expected prerequisite, not a newly proven code defect.
+  User must renew with `claude auth login` before the two still-authorized
+  real authoring turns. Zero model turns have been sent. Hidden max-turns
+  support is authenticated through status; closed diagnostics never expose
+  raw credentials. Goal remains active until real authoring acceptance.
+  Three consecutive goal turns confirmed authrenewal; pause repeated probes
+  until the user renews login. Final audit also requires the five-task CLI
+  journey record: separate tests exist, not a measured complete walkthrough.
+  Post-merge run 34706300171 is running, no failure observed, not yet passed.
+  The older entries below are historical. This post-merge checkpoint is local.
+
 - 2026-09-12 hosted acceptance: draft PR #11 is open, source HEAD
   `a9d3491078c2f8840a33c93fe34e3053185d2b2d`; all 61 GitHub checks PASS.
   Runs: repository-baseline `34703071966`, ticket-entry `34703071941`,
