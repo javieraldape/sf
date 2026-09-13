@@ -72,6 +72,14 @@ class RacePartitionTest(unittest.TestCase):
         self.assertNotIn("PreparedIndexRecovery$/", workflow)
         self.assertNotIn("CandidateFinalizationRecovery$/", workflow)
 
+    def test_compiled_node_uses_supported_bounded_homebrew_runtime(self):
+        workflow = (Path(__file__).resolve().parent.parent /
+                    ".github/workflows/repository-baseline.yml").read_text()
+        self.assertIn("brew install node@22", workflow)
+        self.assertIn('setup_node="$(brew --prefix node@22)/bin/node"', workflow)
+        self.assertIn('sudo ln -sfn "$setup_node" /opt/homebrew/bin/node', workflow)
+        self.assertNotIn("uses: actions/setup-node", workflow)
+
     def test_required_acceptance_gate_is_fail_closed(self):
         workflow = (Path(__file__).resolve().parent.parent /
                     ".github/workflows/repository-baseline.yml").read_text()

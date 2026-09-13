@@ -62,16 +62,19 @@ jobs:
         with:
           python-version: "3.12"
       - run: scripts/artifact-check --base origin/main
-      - uses: actions/setup-node@v4
-        if: matrix.target == 'test-compiled-e2e'
-        with:
-          node-version: '22'
       - name: Expose the approved Node runtime for compiled acceptance
         if: matrix.target == 'test-compiled-e2e'
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: '1'
+          HOMEBREW_NO_INSTALL_CLEANUP: '1'
         run: |
           set -eu
-          setup_node=$(command -v node)
-          node -e 'const [major, minor] = process.versions.node.split(".").map(Number); if (major !== 22 || minor < 8) process.exit(1); console.log(process.version)'
+          # The supported Homebrew layout splits the authenticated Mach-O
+          # closure into bounded files. setup-node's 112MB monolithic binary
+          # exceeds the production 64MiB file cap; never relax that cap for CI.
+          brew list --versions node@22 >/dev/null 2>&1 || brew install node@22
+          setup_node="$(brew --prefix node@22)/bin/node"
+          "$setup_node" -e 'const [major, minor] = process.versions.node.split(".").map(Number); if (major !== 22 || minor < 8) process.exit(1); console.log(process.version)'
           sudo mkdir -p /opt/homebrew/bin
           sudo ln -sfn "$setup_node" /opt/homebrew/bin/node
           test "$(readlink /opt/homebrew/bin/node)" = "$setup_node"
