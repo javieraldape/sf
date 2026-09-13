@@ -25,7 +25,12 @@ jobs:
           sudo ln -sfn "$setup_go" /usr/local/go/bin/go
           test "$(readlink /usr/local/go/bin/go)" = "$setup_go"
       - name: Fairness, concurrency, and control regression suites
-        run: go test -race -p 1 -count=1 ./internal/workflowruntime ./internal/codexprovider
+        # Full integration/race inventory runs independently in repository-baseline.
+        # Keep this diagnostic lane bounded so unrelated long fixtures do not
+        # hide feedback on scheduling and the new worker/account ceiling.
+        run: |
+          go test -race -p 1 -count=1 ./internal/workflowruntime -run '^Test(Scheduler|Runtime|Admission|ControlBundle|StoreBackedPostOpen)'
+          go test -race -p 1 -count=1 ./internal/codexprovider
       - name: Production worker configuration
         run: go test -p 1 -count=1 ./cmd/sf -run '^TestWorkflowWorkerCountIsBoundedAndOptIn$'
       - name: Durable shared-account capacity boundary
