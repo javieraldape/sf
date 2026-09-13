@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Partition hosted acceptance suites without omitting tests.
 
-CI runs every `other`, `runtime-race`, and Store shard on isolated macOS runners. Local
-`make test-race` remains the unpartitioned reference command.
+CI runs every general-package `other`, daemon, `runtime-race`, and Store shard on
+isolated macOS runners. Local `make test-race` remains the unpartitioned reference
+command.
 Normal workflow-runtime integration has separate disjoint shards; the other
 integration packages remain in the Makefile's integration-other lane.
 Crash shards preserve the reference Makefile's exact top-level selection.
@@ -21,6 +22,7 @@ import time
 
 STORE = "github.com/nysa-company/sf/internal/store"
 RUNTIME = "github.com/nysa-company/sf/internal/workflowruntime"
+DAEMON = "github.com/nysa-company/sf/internal/daemon"
 FLAGS = ["-race", "-count=1", "-shuffle=off", "-p", "1", "-timeout", "60m"]
 INTEGRATION_FLAGS = ["-count=1", "-shuffle=off", "-p", "1", "-timeout", "30m"]
 CRASH_PATTERN = "(^Test.*Crash|Crash|Recovery|Recover|Rearm|Quarantine)"
@@ -39,20 +41,41 @@ PACKAGE_SECONDS = {
         "internal/mergeproof": 17,
     }.items()
 }
+DAEMON_RACE_SECONDS = {
+    "TestDaemonProviderRetryReplayRearmsAndSecondEpochIsTerminal": 40,
+    "TestDaemonRecoverUsesTypedBlockerAndGuardedNarrowing": 33,
+    "TestDaemonPreparedCommitResolverRejectsForgedAndFutureRegistration": 30,
+    "TestDaemonPreparedRecoveryDefersProtectedCheckpointBeforeGenericObservation": 26,
+    "TestProviderRetryViewStatusShowAndList": 25,
+    "TestDaemonGuardedMergeRetryDrainsBeforeAuthorityAndReplaysCommittedRearm": 21,
+    "TestDaemonCancelChecksMergeBeforeAndAfterDrain": 16,
+    "TestOperatorDecisionRealRetryRestartActivityAndMergeRecovery": 14,
+    "TestOperatorDecisionUsesRuntimeActivityAndReplaysOnce": 14,
+    "TestRuntimeFactoryRejectsAmbiguousOrPartialControlBundles": 13,
+    "TestCloseFirstRejectsWaitingLifecycleHandlers": 13,
+    "TestDaemonPreparedCommitRunnerFactoryIsLazyAndPrecedesRuntime": 13,
+    "TestOperatorDecisionRequiresRequestedReviewedHead": 13,
+    "TestDaemonPreparedCommitRunnerFactoryRecoversRealGitBeforeRuntime": 13,
+    "TestDaemonProviderRetryRetainsProviderWrittenInvalidArtifactWorktree": 12,
+    "TestCLIRunRealDaemonLostResponseDoesNotDuplicateWork": 11,
+    "TestSubmitRejectsUnregisteredProjectBeforeTicketPersistence": 11,
+    "TestAuthoringCancellationAndShutdownOwnStartupWorker": 11,
+    "TestSubmitResolvesOmittedMergeModeAgainstFrozenProjectPolicy": 10,
+}
 RUNTIME_RACE_SECONDS = {
-    "TestPostbuildRepairCandidateFinalizationRecovery": 444,
-    "TestRepositoryMaterializerPostbuildAmendmentPreparedIndexRecoveryNewLeader": 269,
-    "TestRepositoryMaterializerPostbuildAmendmentPreparedIndexRecoverySameFence": 240,
-    "TestRepositoryMaterializerPostbuildAmendmentPreparedIndexRecoverySyncedNewLeader": 229,
-    "TestRepositoryMaterializerPostbuildAmendmentRealEndToEnd": 228,
-    "TestPostbuildAmendmentRecordedCandidateFinalizationRecovery": 223,
-    "TestPostbuildAmendmentCandidateFinalizationRecovery": 219,
-    "TestPostbuildAmendmentCandidateFinalizationRecoveryAfterRestart": 216,
+    "TestPostbuildRepairCandidateFinalizationRecovery": 451,
+    "TestRepositoryMaterializerPostbuildAmendmentPreparedIndexRecoverySameFence": 278,
+    "TestRepositoryMaterializerPostbuildAmendmentPreparedIndexRecoveryNewLeader": 273,
+    "TestPostbuildAmendmentCandidateFinalizationRecoveryAfterRestart": 273,
+    "TestRepositoryMaterializerPostbuildAmendmentPreparedIndexRecoverySyncedNewLeader": 266,
+    "TestRepositoryMaterializerPostbuildAmendmentRealEndToEnd": 250,
     "TestPostbuildAmendmentRecordedCandidateFinalizationRecoveryAfterRestart": 202,
-    "TestRepositoryMaterializerPreparePostbuildRepairRealBoundary": 83,
-    "TestRepositoryMaterializerRealSourceResumePreparedObservationLoss": 80,
-    "TestRepositoryMaterializerPostbuildRepairRealEndToEnd": 66,
-    "TestRepositoryMaterializerRealStoreGitReplay": 43,
+    "TestPostbuildAmendmentRecordedCandidateFinalizationRecovery": 201,
+    "TestPostbuildAmendmentCandidateFinalizationRecovery": 190,
+    "TestRepositoryMaterializerPostbuildRepairRealEndToEnd": 79,
+    "TestRepositoryMaterializerPreparePostbuildRepairRealBoundary": 74,
+    "TestRepositoryMaterializerRealSourceResumePreparedObservationLoss": 60,
+    "TestRepositoryMaterializerRealStoreGitReplay": 44,
 }
 # Scheduling hints are intentionally scoped by execution mode: race, ordinary
 # integration and crash instrumentation have measurably different costs. These
@@ -61,47 +84,69 @@ RUNTIME_RACE_SECONDS = {
 # remain in the live inventory.
 STORE_RACE_SECONDS = {
     "TestCIV41CompositeForeignKeyTamperingRejectsOpenAndReadOnly": 293,
-    "TestPostbuildPendingAmendmentTwoRecoveriesAndDecision": 114,
-    "TestPostbuildRepairCandidateHandoffAndRecovery": 83,
-    "TestProtectedBaseRefreshReviewedRecoveryRejectsTamperedHistory": 68,
-    "TestFenceRecoveredRunnersAcceptsRepeatedArmedPostPublicationCrashes": 62,
-    "TestRunnerRecoveryAuthorityAuthenticatesControlGaps": 60,
-    "TestPublicationEvidenceLifecycleReplayRecoveryAndBackup": 59,
-    "TestRepositoryCommandResultAuthenticatedHistoricalLoadAndTampering": 56,
-    "TestControlProofFencesEveryStoreAdmissionAtLinearization": 55,
-    "TestFenceRecoveredRunnersAcceptsArmedPostPublicationRearm": 50,
-    "TestProviderRetryWaitingApprovalRejectsTamperedAuthority": 49,
-    "TestBeginProviderAttemptRejectsInvalidDirectLaunchInput": 43,
-    "TestCompleteProtectedBaseRefreshRejectsUnreadyOrMismatchedEvidence": 42,
-    "TestAuthenticatePostbuildFailureRefusals": 40,
-    "TestProviderRetryWaitingApprovalRearmDecisionAndMergingRestarts": 39,
-    "TestCandidateRepairCurrentReadersAndRearmRejectBrokenRecoveryPrefix": 38,
-    "TestProtectedBaseRefreshReservationPreservesCompletedCIRepairParent": 34,
-    "TestMergeObservationPrePublicationAllowlist": 34,
-    "TestReviewBlockedRecoveryRearmsExactSealedEndpoint": 33,
-    "TestSeededLeaseAdmissionStress": 32,
-    "TestPostPublicationRearmProofAfterRestartAcrossStates": 31,
-    "TestProviderRetryProtectedBaseRefreshPausedTakeoverRejectsUnboundEvidence": 31,
+    "TestPostbuildPendingAmendmentTwoRecoveriesAndDecision": 109,
+    "TestPostbuildRepairCandidateHandoffAndRecovery": 69,
+    "TestFenceRecoveredRunnersAcceptsRepeatedArmedPostPublicationCrashes": 68,
+    "TestPublicationEvidenceLifecycleReplayRecoveryAndBackup": 67,
+    "TestRepositoryCommandResultAuthenticatedHistoricalLoadAndTampering": 65,
+    "TestProtectedBaseRefreshReviewedRecoveryRejectsTamperedHistory": 61,
+    "TestControlProofFencesEveryStoreAdmissionAtLinearization": 49,
+    "TestRunnerRecoveryAuthorityAuthenticatesControlGaps": 48,
+    "TestBeginProviderAttemptRejectsInvalidDirectLaunchInput": 47,
+    "TestProviderRetryWaitingApprovalRejectsTamperedAuthority": 43,
+    "TestFenceRecoveredRunnersAcceptsArmedPostPublicationRearm": 42,
+    "TestProtectedBaseRefreshReservationPreservesCompletedCIRepairParent": 39,
+    "TestTransitionGuardedMergeObservedRequiresSealedExactObservation": 38,
+    "TestProviderRetryWaitingApprovalRearmDecisionAndMergingRestarts": 38,
+    "TestCompleteProtectedBaseRefreshRejectsUnreadyOrMismatchedEvidence": 37,
+    "TestAuthenticatePostbuildFailureRefusals": 37,
+    "TestMergeObservationPrePublicationRejectsTamperedRecoveredStoppingCancellationLineage": 36,
+    "TestSeededLeaseAdmissionStress": 36,
+    "TestCandidateRepairCurrentReadersAndRearmRejectBrokenRecoveryPrefix": 35,
+    "TestProviderRetryProtectedBaseRefreshPausedTakeoverRejectsUnboundEvidence": 35,
+    "TestCurrentAttestedProviderPairChecksEveryRoleAndRestart": 34,
+    "TestReviewBlockedRecoveryRearmsExactSealedEndpoint": 31,
     "TestCIPollerAuthorityE2E": 31,
-    "TestMergeObservationPrePublicationRejectsTamperedRecoveredStoppingCancellationLineage": 30,
-    "TestProviderRetryProtectedBaseRefreshRejectsMalformedLineage": 28,
-    "TestProviderRetryWorktreeProofReturnsSemanticHeadsAndReplays": 28,
-    "TestTransitionGuardedMergeObservedRequiresSealedExactObservation": 28,
-    "TestCurrentAttestedProviderPairChecksEveryRoleAndRestart": 28,
-    "TestRepositoryCommandResourceRetirementRequiresExactDrainedLaunch": 27,
-    "TestPostbuildRepairRecoveryRejectsTamperedBoundaryAndUnwitnessedGap": 26,
+    "TestPostPublicationRearmProofAfterRestartAcrossStates": 31,
+    "TestMergeObservationPrePublicationAllowlist": 28,
+    "TestFinalReviewAuthorityRejectsBrokenPendingToGreenChain": 27,
+    "TestProviderRetryWaitingApprovalRearmRejectsTamperedLiveProof": 26,
+    "TestPostPublicationRearmProofAuthenticatesCandidateRepairParentWithoutWeakeningOrdinaryParent": 26,
+    "TestProviderRetryProtectedBaseRefreshRejectsMalformedLineage": 26,
+    "TestPostbuildAmendmentMissingSchemaRejected": 25,
     "TestAuthoringNonSuccessCompletesWithEmptyBlobAndExactProof": 25,
-    "TestCandidateRepairStartupRejectsTamperedConsumedRecoveryPrefix": 25,
-    "TestProviderRetryWaitingApprovalRearmRejectsTamperedLiveProof": 25,
-    "TestTransitionPostbuildRepairRejectsMalformedAndStaleRequests": 24,
-    "TestPostbuildAmendmentMissingSchemaRejected": 24,
-    "TestPostPublicationReconcilingResumeAuthenticatesBeforeCommit": 23,
+    "TestPostPublicationReconcilingResumeAuthenticatesBeforeCommit": 25,
+    "TestFinalReviewTransitionsDeriveManualGuardedSpikeAndRejectAutonomous": 25,
+    "TestRepositoryCommandResourceRetirementRequiresExactDrainedLaunch": 24,
+    "TestProtectedBaseRefreshAfterWaitingCIRestartAuthenticatesFreshBuilder": 24,
+    "TestProviderRetryWorktreeProofReturnsSemanticHeadsAndReplays": 23,
     "TestMergeObservationPrePublicationRejectsTamperedResealedCancellationRecovery": 23,
+    "TestTransitionPostbuildRepairRejectsMalformedAndStaleRequests": 22,
     "TestActiveGitMutationLeasesQuarantinesInvalidRecoveryFacts": 22,
-    "TestProtectedBaseRefreshAfterWaitingCIRestartAuthenticatesFreshBuilder": 21,
-    "TestFinalReviewAuthorityRejectsBrokenPendingToGreenChain": 21,
-    "TestFinalReviewTransitionsDeriveManualGuardedSpikeAndRejectAutonomous": 21,
-    "TestCredentialBearingProviderQualificationRequiresExactCurrentSignature": 20,
+    "TestCandidateRepairCIHistoryAuthenticatesPollRetryEpochAndRejectsTamper": 21,
+    "TestCredentialBearingProviderQualificationRequiresExactCurrentSignature": 21,
+    "TestFinalReviewAuthorityRejectsLegacyAndTamperedV43CILineage": 20,
+    "TestCandidateRepairRearmProofRejectsMissingOrMalformedBinding": 20,
+    "TestPostbuildRepairRecoveryRejectsTamperedBoundaryAndUnwitnessedGap": 20,
+    "TestVerificationAmendmentDecisionHistoryCrossesRecoveryBeforeDecision": 19,
+    "TestReviewRepairAndOperatorEscalationConsumeExactStoredReviewerResult": 19,
+    "TestCandidateRepairStartupRejectsTamperedConsumedRecoveryPrefix": 19,
+    "TestPostbuildCheckpointFailedReclaimRequiresExactRetirement": 19,
+    "TestCIV41AuthorityChainAndNegativeBindings": 19,
+    "TestV28ReconcilesInvalidV25CanonicalInputsBeforeAnyRecovery": 18,
+    "TestConfirmRecoveredPreparedCommitRejectsMissingOrPartialPreparedTuple": 18,
+    "TestV55DispositionsLegacyCandidateRepairAuthorityWithoutRewritingEvidence": 18,
+    "TestPostbuildRepairV61MissingSchemaRejected": 18,
+    "TestStoppingRecoveryRejectsTamperedControlEvidence": 17,
+    "TestCIPendingChainRecoveryAcrossCardinalities": 17,
+    "TestProviderAttemptCheckpointRejectsLostAuthority": 16,
+    "TestSemanticGuardedMergeRetryRecoversBeforeRearm": 16,
+    "TestCIObservationValidRepairBudgetRequiresSuccessorCompletion": 16,
+    "TestCandidateRepairPreparedSuccessorSurvivesRestartWithoutSecondCommandOrCommit": 16,
+    "TestPostPublicationRearmProofAuthenticatesReviewingAndApprovalStates": 16,
+    "TestConsumeBudgetCorrectionRequestIDBounds": 16,
+    "TestProviderAttemptCheckpointDerivesPhaseHead": 15,
+    "TestAdvanceOpenRuntimeAuthorityRejectsFutureOrMismatchedControl": 15,
 }
 RUNTIME_INTEGRATION_SECONDS = {
     # Inferred per-scenario hints divide the successful pre-split aggregate;
@@ -134,14 +179,16 @@ CRASH_RUNTIME_SECONDS = {
 }
 MODE_WEIGHTS = {
     "store": STORE_RACE_SECONDS,
+    "daemon-race": DAEMON_RACE_SECONDS,
     "runtime-race": RUNTIME_RACE_SECONDS,
     "runtime-integration": RUNTIME_INTEGRATION_SECONDS,
     "crash-runtime": CRASH_RUNTIME_SECONDS,
 }
 WEIGHT_PROVENANCE = {
     "other": "measured successful macos run 34786460096; package elapsed",
-    "store": "measured successful macos run 34786460096; race top-level tests at least 20 seconds",
-    "runtime-race": "measured successful macos run 34786460096; race top-level tests at least 20 seconds",
+    "daemon-race": "measured successful macos run 34787977070; race top-level tests at least 10 seconds",
+    "store": "measured successful macos run 34787977070; race top-level tests at least 15 seconds",
+    "runtime-race": "measured successful macos run 34787977070; race top-level tests at least 20 seconds",
     "runtime-integration": "measured successful macos run 34771148550; normal top-level tests",
     "crash-runtime": "measured successful macos run 34783306067; normal crash top-level tests",
     "crash-other": "unweighted complete inventory; no inferred timings",
@@ -155,10 +202,10 @@ def race_packages(packages, mode):
     if (not packages or len(set(packages)) != len(packages)
             or any(not p or p.strip() != p or any(c.isspace() for c in p) for p in packages)):
         raise ValueError("empty, duplicate, or malformed package inventory")
-    if packages.count(STORE) != 1 or packages.count(RUNTIME) != 1:
-        raise ValueError("Store or workflow runtime missing or duplicated in package inventory")
+    if packages.count(STORE) != 1 or packages.count(RUNTIME) != 1 or packages.count(DAEMON) != 1:
+        raise ValueError("Store, workflow runtime, or daemon missing or duplicated in package inventory")
     selected = [p for p in packages if (p == RUNTIME if mode == "runtime-race"
-                                      else p not in (STORE, RUNTIME))]
+                                      else p not in (STORE, RUNTIME, DAEMON))]
     if not selected:
         raise ValueError("empty race package partition")
     return selected
@@ -278,7 +325,7 @@ def run_recorded(command, directory, mode, index, count, names, selected):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("mode", choices=["other", "runtime-race", "store", "runtime-integration", "crash-other", "crash-runtime"])
+    parser.add_argument("mode", choices=["other", "daemon-race", "runtime-race", "store", "runtime-integration", "crash-other", "crash-runtime"])
     parser.add_argument("--index", type=int, default=0)
     parser.add_argument("--count", type=int, default=1)
     parser.add_argument("--list-only", action="store_true")
@@ -298,8 +345,8 @@ def main():
                        "-run", CRASH_PATTERN]
         print(f"{args.mode} shard {args.index + 1}/{args.count}: " + ", ".join(selected), flush=True)
     else:
-        package = STORE if args.mode == "store" else RUNTIME
-        race = args.mode in ("store", "runtime-race")
+        package = STORE if args.mode == "store" else DAEMON if args.mode == "daemon-race" else RUNTIME
+        race = args.mode in ("store", "daemon-race", "runtime-race")
         flags = FLAGS if race else INTEGRATION_FLAGS
         inventory_flags = ["-race"] if race else []
         output = subprocess.check_output(

@@ -31,25 +31,27 @@ class RacePartitionTest(unittest.TestCase):
         balanced = workflow.split("  balanced:\n", 1)[1].split("  runtime-integration:\n", 1)[0]
         self.assertIn("lane: [race-other, runtime-race, crash-runtime]", balanced)
         self.assertIn("shard: [0, 1, 2, 3]", balanced)
-        self.assertIn("include:\n          - lane: race-other\n            shard: 4", balanced)
+        self.assertIn("include:\n          - lane: daemon-race\n            shard: 0", balanced)
         lanes = re.search(r"lane: \[([^]]+)\]", balanced).group(1).split(", ")
         balanced_shards = [int(value) for value in
                            re.search(r"shard: \[([^]]+)\]", balanced).group(1).split(", ")]
         jobs = {(lane, shard) for lane, shard in itertools.product(lanes, balanced_shards)}
         included = [(lane, int(shard)) for lane, shard in
                     re.findall(r"- lane: ([a-z-]+)\n\s+shard: (\d+)", balanced)]
-        self.assertEqual(included, [("race-other", 4)])
+        self.assertEqual(included, [("daemon-race", 0), ("daemon-race", 1)])
         self.assertNotIn("exclude:", balanced)
         jobs.update(included)
-        expected_jobs = ({("race-other", shard) for shard in range(5)} |
+        expected_jobs = ({("daemon-race", shard) for shard in range(2)} |
                          {(lane, shard) for lane in ("runtime-race", "crash-runtime")
-                          for shard in range(4)})
+                          for shard in range(4)} |
+                         {("race-other", shard) for shard in range(4)})
         self.assertEqual(jobs, expected_jobs)
-        self.assertEqual(len(jobs), 13)
+        self.assertEqual(len(jobs), 14)
         makefile = (root / "Makefile").read_text()
         self.assertIn('runtime-race) python3 scripts/run-bounded --timeout 65m -- python3 scripts/ci-race.py runtime-race', makefile)
         self.assertIn('runtime-integration --index "$$SHARD" --count 4', makefile)
-        self.assertIn('other --index "$$SHARD" --count 5', makefile)
+        self.assertIn('other --index "$$SHARD" --count 4', makefile)
+        self.assertIn('daemon-race --index "$$SHARD" --count 2', makefile)
         for mode in ("runtime-race", "crash-runtime"):
             self.assertIn(f'{mode} --index "$$SHARD" --count 4', makefile)
         reference = re.search(r"\ntest-integration:\n\t([^\n]+)", makefile).group(1).split()
@@ -163,7 +165,7 @@ class RacePartitionTest(unittest.TestCase):
                 ci.balanced_partition(names, 0, 3, {"heavy": weight})
 
     def test_each_test_mode_has_independent_scheduling_hints(self):
-        self.assertEqual(set(ci.MODE_WEIGHTS), {"store", "runtime-race",
+        self.assertEqual(set(ci.MODE_WEIGHTS), {"store", "daemon-race", "runtime-race",
                                                 "runtime-integration", "crash-runtime"})
         self.assertIsNot(ci.MODE_WEIGHTS["runtime-race"],
                          ci.MODE_WEIGHTS["runtime-integration"])
@@ -184,14 +186,34 @@ class RacePartitionTest(unittest.TestCase):
             self.assertEqual(run.call_args.args[0][-1], "^(?:TestA|TestAB)$")
             self.assertIn("-race", run.call_args.args[0])
 
-    def test_other_runs_every_package_outside_store_and_runtime(self):
+    def test_other_runs_every_package_outside_store_runtime_and_daemon(self):
         with patch("sys.argv", ["ci-race.py", "other"]), \
-             patch.object(ci.subprocess, "check_output", return_value=f"first\n{ci.STORE}\n{ci.RUNTIME}\nlast\n"), \
+             patch.object(ci.subprocess, "check_output", return_value=f"first\n{ci.STORE}\n{ci.RUNTIME}\n{ci.DAEMON}\nlast\n"), \
              patch.object(ci.subprocess, "Popen", return_value=FakeProcess([], 0)) as run:
             self.assertEqual(ci.main(), 0)
             self.assertEqual(run.call_args.args[0][-2:], ["first", "last"])
             self.assertNotIn(ci.STORE, run.call_args.args[0])
             self.assertNotIn(ci.RUNTIME, run.call_args.args[0])
+            self.assertNotIn(ci.DAEMON, run.call_args.args[0])
+
+    def test_daemon_race_live_inventory_is_complete_disjoint_and_exact(self):
+        names = ["TestKnown", "TestNew", "ExampleNew", "FuzzNew"]
+        selected = []
+        for index in range(2):
+            with patch("sys.argv", ["ci-race.py", "daemon-race", "--index", str(index),
+                                    "--count", "2"]), \
+                 patch.object(ci.subprocess, "check_output",
+                              return_value="\n".join(names)) as listing, \
+                 patch.object(ci.subprocess, "Popen", return_value=FakeProcess([], 1)) as run:
+                self.assertEqual(ci.main(), 1)
+                self.assertEqual(listing.call_args.args[0],
+                                 ["go", "test", "-race", "-list", ".", ci.DAEMON])
+                command = run.call_args.args[0]
+                self.assertIn("-race", command)
+                self.assertEqual(command[-2], "-run")
+                selected.extend(name for name in names if re.search(command[-1], name))
+        self.assertEqual(sorted(selected), sorted(names))
+        self.assertEqual(len(selected), len(set(selected)))
 
     def test_runtime_race_partitions_inventory_with_unchanged_flags(self):
         with patch("sys.argv", ["ci-race.py", "runtime-race"]), \
@@ -203,7 +225,7 @@ class RacePartitionTest(unittest.TestCase):
                                                    "-run", "^(?:ExampleB|FuzzC|TestA)$"])
 
     def test_other_package_shards_keep_new_packages_and_propagate_failure(self):
-        packages = ["first", ci.STORE, ci.RUNTIME, "last", "new", "fourth"]
+        packages = ["first", ci.STORE, ci.RUNTIME, ci.DAEMON, "last", "new", "fourth"]
         commands = []
         for index in range(4):
             with patch("sys.argv", ["ci-race.py", "other", "--index", str(index), "--count", "4"]), \
@@ -231,33 +253,34 @@ class RacePartitionTest(unittest.TestCase):
         self.assertEqual(sorted(selected), sorted(n for n in names if re.search(original, n)))
         self.assertEqual(len(selected), len(set(selected)))
         with patch("sys.argv", ["ci-race.py", "crash-other"]), \
-             patch.object(ci.subprocess, "check_output", return_value=f"first\n{ci.STORE}\n{ci.RUNTIME}\n"), \
+             patch.object(ci.subprocess, "check_output", return_value=f"first\n{ci.STORE}\n{ci.RUNTIME}\n{ci.DAEMON}\n"), \
              patch.object(ci.subprocess, "Popen", return_value=FakeProcess([], 1)) as run:
             self.assertEqual(ci.main(), 1)
             self.assertEqual(run.call_args.args[0], ["go", "test", *ci.INTEGRATION_FLAGS,
-                                                   "-json", "first", ci.STORE, "-run", ci.CRASH_PATTERN])
+                                                   "-json", "first", ci.STORE, ci.DAEMON,
+                                                   "-run", ci.CRASH_PATTERN])
 
     def test_race_package_lanes_are_complete_and_disjoint(self):
-        packages = ["first", ci.STORE, ci.RUNTIME, "last"]
+        packages = ["first", ci.STORE, ci.RUNTIME, ci.DAEMON, "last"]
         other = ci.race_packages(packages, "other")
         runtime = ci.race_packages(packages, "runtime-race")
-        self.assertEqual(set(other + runtime + [ci.STORE]), set(packages))
-        self.assertEqual(len(other + runtime + [ci.STORE]), len(packages))
+        self.assertEqual(set(other + runtime + [ci.STORE, ci.DAEMON]), set(packages))
+        self.assertEqual(len(other + runtime + [ci.STORE, ci.DAEMON]), len(packages))
         self.assertEqual(runtime, [ci.RUNTIME])
 
     def test_race_package_lanes_refuse_malformed_inventory(self):
-        for packages in ([], ["first", ci.STORE], ["first", ci.RUNTIME],
-                         ["first", ci.STORE, ci.RUNTIME, ci.STORE],
-                         ["first", ci.STORE, ci.RUNTIME, ci.RUNTIME],
-                         ["first", "first", ci.STORE, ci.RUNTIME],
-                         ["", ci.STORE, ci.RUNTIME],
-                         [" bad", ci.STORE, ci.RUNTIME],
-                         ["bad package", ci.STORE, ci.RUNTIME]):
+        valid = ["first", ci.STORE, ci.RUNTIME, ci.DAEMON]
+        inventories = ([], valid[:-1], ["first", ci.STORE, ci.DAEMON],
+                       ["first", ci.RUNTIME, ci.DAEMON], valid + [ci.STORE],
+                       valid + [ci.RUNTIME], valid + [ci.DAEMON],
+                       ["first"] + valid, [""] + valid[1:], [" bad"] + valid[1:],
+                       ["bad package"] + valid[1:])
+        for packages in inventories:
             for mode in ("other", "runtime-race"):
                 with self.subTest(packages=packages, mode=mode), self.assertRaises(ValueError):
                     ci.race_packages(packages, mode)
         with self.assertRaises(ValueError):
-            ci.race_packages([ci.STORE, ci.RUNTIME], "other")
+            ci.race_packages([ci.STORE, ci.RUNTIME, ci.DAEMON], "other")
 
     def test_runtime_integration_keeps_normal_flags_and_all_seed_kinds(self):
         with patch("sys.argv", ["ci-race.py", "runtime-integration", "--count", "1"]), \

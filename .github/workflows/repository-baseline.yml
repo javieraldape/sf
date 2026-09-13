@@ -116,7 +116,7 @@ jobs:
   store-race:
     # modernc SQLite migration fixtures under -race exceed one package's hour
     # on hosted macOS. Disjoint shards keep every test and each test's subtests.
-    # Together with balanced race-other/runtime-race this is the full race suite.
+    # Together with balanced race-other/daemon-race/runtime-race this is the full race suite.
     runs-on: macos-14
     needs: preflight
     timeout-minutes: 75
@@ -175,8 +175,10 @@ jobs:
         lane: [race-other, runtime-race, crash-runtime]
         shard: [0, 1, 2, 3]
         include:
-          - lane: race-other
-            shard: 4
+          - lane: daemon-race
+            shard: 0
+          - lane: daemon-race
+            shard: 1
     steps:
       - uses: actions/checkout@v4
         with:
