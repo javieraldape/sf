@@ -118,7 +118,7 @@ class RacePartitionTest(unittest.TestCase):
     def test_store_failure_is_propagated_and_pattern_is_exact(self):
         with patch("sys.argv", ["ci-race.py", "store", "--count", "1"]), \
              patch.object(ci.subprocess, "check_output", return_value="TestA\nTestAB\n"), \
-             patch.object(ci.subprocess, "call", return_value=1) as run:
+             patch.object(ci.subprocess, "Popen", return_value=FakeProcess([], 1)) as run:
             self.assertEqual(ci.main(), 1)
             self.assertEqual(run.call_args.args[0][-1], "^(?:TestA|TestAB)$")
             self.assertIn("-race", run.call_args.args[0])
@@ -126,7 +126,7 @@ class RacePartitionTest(unittest.TestCase):
     def test_other_runs_every_package_outside_store_and_runtime(self):
         with patch("sys.argv", ["ci-race.py", "other"]), \
              patch.object(ci.subprocess, "check_output", return_value=f"first\n{ci.STORE}\n{ci.RUNTIME}\nlast\n"), \
-             patch.object(ci.subprocess, "call", return_value=0) as run:
+             patch.object(ci.subprocess, "Popen", return_value=FakeProcess([], 0)) as run:
             self.assertEqual(ci.main(), 0)
             self.assertEqual(run.call_args.args[0][-2:], ["first", "last"])
             self.assertNotIn(ci.STORE, run.call_args.args[0])
@@ -135,7 +135,7 @@ class RacePartitionTest(unittest.TestCase):
     def test_runtime_race_partitions_inventory_with_unchanged_flags(self):
         with patch("sys.argv", ["ci-race.py", "runtime-race"]), \
              patch.object(ci.subprocess, "check_output", return_value="TestA\nExampleB\nFuzzC\n") as listing, \
-             patch.object(ci.subprocess, "call", return_value=1) as run:
+             patch.object(ci.subprocess, "Popen", return_value=FakeProcess([], 1)) as run:
             self.assertEqual(ci.main(), 1)
             self.assertEqual(listing.call_args.args[0], ["go", "test", "-race", "-list", ".", ci.RUNTIME])
             self.assertEqual(run.call_args.args[0], ["go", "test", *ci.FLAGS, "-json", ci.RUNTIME,
@@ -147,7 +147,7 @@ class RacePartitionTest(unittest.TestCase):
         for index in range(4):
             with patch("sys.argv", ["ci-race.py", "other", "--index", str(index), "--count", "4"]), \
                  patch.object(ci.subprocess, "check_output", return_value="\n".join(packages)), \
-                 patch.object(ci.subprocess, "call", return_value=1) as run:
+                 patch.object(ci.subprocess, "Popen", return_value=FakeProcess([], 1)) as run:
                 self.assertEqual(ci.main(), 1)
                 commands.extend(run.call_args.args[0][3 + len(ci.FLAGS):])
         self.assertEqual(sorted(commands), ["first", "fourth", "last", "new"])
@@ -162,7 +162,7 @@ class RacePartitionTest(unittest.TestCase):
         for index in range(4):
             with patch("sys.argv", ["ci-race.py", "crash-runtime", "--index", str(index), "--count", "4"]), \
                  patch.object(ci.subprocess, "check_output", return_value="\n".join(names)), \
-                 patch.object(ci.subprocess, "call", return_value=1) as run:
+                 patch.object(ci.subprocess, "Popen", return_value=FakeProcess([], 1)) as run:
                 self.assertEqual(ci.main(), 1)
                 command = run.call_args.args[0]
                 self.assertNotIn("-race", command)
@@ -171,7 +171,7 @@ class RacePartitionTest(unittest.TestCase):
         self.assertEqual(len(selected), len(set(selected)))
         with patch("sys.argv", ["ci-race.py", "crash-other"]), \
              patch.object(ci.subprocess, "check_output", return_value=f"first\n{ci.STORE}\n{ci.RUNTIME}\n"), \
-             patch.object(ci.subprocess, "call", return_value=1) as run:
+             patch.object(ci.subprocess, "Popen", return_value=FakeProcess([], 1)) as run:
             self.assertEqual(ci.main(), 1)
             self.assertEqual(run.call_args.args[0], ["go", "test", *ci.INTEGRATION_FLAGS,
                                                    "-json", "first", ci.STORE, "-run", ci.CRASH_PATTERN])
@@ -201,7 +201,7 @@ class RacePartitionTest(unittest.TestCase):
     def test_runtime_integration_keeps_normal_flags_and_all_seed_kinds(self):
         with patch("sys.argv", ["ci-race.py", "runtime-integration", "--count", "1"]), \
              patch.object(ci.subprocess, "check_output", return_value="TestA\nExampleB\nFuzzC\n") as listing, \
-             patch.object(ci.subprocess, "call", return_value=1) as run:
+             patch.object(ci.subprocess, "Popen", return_value=FakeProcess([], 1)) as run:
             self.assertEqual(ci.main(), 1)
             self.assertEqual(listing.call_args.args[0], ["go", "test", "-list", ".", ci.RUNTIME])
             command = run.call_args.args[0]
@@ -255,6 +255,16 @@ class RacePartitionTest(unittest.TestCase):
                                              ["TestA"], ["TestA"]), -15)
             record = json.loads((Path(directory) / "store-0.json").read_text())
         self.assertEqual(record["exit_code"], -15)
+
+    def test_json_stream_without_artifact_still_renders_output_and_exit(self):
+        line = json.dumps({"Action": "output", "Package": "one",
+                           "Output": "human failure detail\n"}) + "\n"
+        process = FakeProcess([line], 3)
+        with patch.object(ci.subprocess, "Popen", return_value=process), \
+             redirect_stdout(io.StringIO()) as stdout:
+            self.assertEqual(ci.run_recorded(["go"], "", "crash-other", 0, 1,
+                                             ["one"], ["one"]), 3)
+        self.assertEqual(stdout.getvalue(), "human failure detail\n")
 
 
 class FakeProcess:

@@ -179,8 +179,6 @@ def write_artifact(directory, mode, index, count, names, selected, exit_code=Non
 
 
 def run_recorded(command, directory, mode, index, count, names, selected):
-    if not directory:
-        return subprocess.call(command)
     started = time.monotonic()
     output = deque()
     output_bytes = 0
