@@ -24,52 +24,73 @@ RUNTIME = "github.com/nysa-company/sf/internal/workflowruntime"
 FLAGS = ["-race", "-count=1", "-shuffle=off", "-p", "1", "-timeout", "60m"]
 INTEGRATION_FLAGS = ["-count=1", "-shuffle=off", "-p", "1", "-timeout", "30m"]
 CRASH_PATTERN = "(^Test.*Crash|Crash|Recovery|Recover|Rearm|Quarantine)"
-# Scheduling hints only, from macOS run 34416329428 (2026-09-09). The live
+# Scheduling hints only, refreshed from successful shards in macOS run
+# 34783306067 (2026-09-13). The live
 # inventory is always authoritative: new names receive weight 1, never skip.
 PACKAGE_SECONDS = {
     "github.com/nysa-company/sf/" + name: seconds for name, seconds in {
-        "cmd/sf": 214, "internal/daemon": 618, "internal/git": 391,
-        "internal/publication": 229, "internal/worktreecoord": 225,
-        "internal/providercoord": 219, "internal/daemon/runtimecontrol": 109,
-        "internal/cli": 99, "internal/localruntime": 89,
-        "internal/processsupervisor": 56, "internal/workflowworker": 46,
-        "internal/ghrunner": 45, "internal/github": 43, "internal/engine": 43,
-        "internal/codexprovider": 29, "internal/bundle": 16,
-        "internal/mergeproof": 12,
+        "cmd/sf": 117, "internal/daemon": 723, "internal/git": 464,
+        "internal/publication": 197, "internal/worktreecoord": 257,
+        "internal/providercoord": 305, "internal/daemon/runtimecontrol": 117,
+        "internal/cli": 82, "internal/localruntime": 104,
+        "internal/processsupervisor": 163, "internal/workflowworker": 52,
+        "internal/ghrunner": 46, "internal/github": 44, "internal/engine": 45,
+        "internal/codexprovider": 23, "internal/bundle": 16,
+        "internal/mergeproof": 14,
     }.items()
 }
 RUNTIME_RACE_SECONDS = {
-    "TestPostbuildAmendmentCandidateFinalizationRecovery": 564,
-    "TestRepositoryMaterializerPostbuildAmendmentPreparedIndexRecovery": 542,
-    "TestPostbuildRepairCandidateFinalizationRecovery": 291,
-    "TestRepositoryMaterializerPostbuildAmendmentRealEndToEnd": 217,
-    "TestRepositoryMaterializerPostbuildRepairRealEndToEnd": 84,
-    "TestRepositoryMaterializerPreparePostbuildRepairRealBoundary": 74,
-    "TestRepositoryMaterializerRealSourceResumePreparedObservationLoss": 68,
-    "TestRepositoryMaterializerRealStoreGitReplay": 43,
+    "TestPostbuildAmendmentCandidateFinalizationRecovery": 873,
+    "TestRepositoryMaterializerPostbuildAmendmentPreparedIndexRecovery": 993,
+    "TestPostbuildRepairCandidateFinalizationRecovery": 437,
+    "TestRepositoryMaterializerPostbuildAmendmentRealEndToEnd": 262,
+    "TestRepositoryMaterializerPostbuildRepairRealEndToEnd": 106,
+    "TestRepositoryMaterializerPreparePostbuildRepairRealBoundary": 87,
+    "TestRepositoryMaterializerRealSourceResumePreparedObservationLoss": 65,
+    "TestRepositoryMaterializerRealStoreGitReplay": 61,
 }
 # Scheduling hints are intentionally scoped by execution mode: race, ordinary
 # integration and crash instrumentation have measurably different costs. These
-# reviewed values came from hosted macOS run 34771148550. Unknown/new tests use
-# the conservative default below and remain in the live inventory.
+# reviewed values came from successful shards in the hosted macOS runs named in
+# WEIGHT_PROVENANCE. Unknown/new tests use the conservative default below and
+# remain in the live inventory.
 STORE_RACE_SECONDS = {
-    "TestCIV41CompositeForeignKeyTamperingRejectsOpenAndReadOnly": 274,
-    "TestPostbuildRepairCandidateHandoffAndRecovery": 92,
+    "TestCIV41CompositeForeignKeyTamperingRejectsOpenAndReadOnly": 312,
+    "TestPostbuildRepairCandidateHandoffAndRecovery": 77,
     "TestPublicationEvidenceLifecycleReplayRecoveryAndBackup": 85,
-    "TestPostbuildPendingAmendmentTwoRecoveriesAndDecision": 80,
+    "TestPostbuildPendingAmendmentTwoRecoveriesAndDecision": 120,
     "TestFenceRecoveredRunnersAcceptsRepeatedArmedPostPublicationCrashes": 77,
-    "TestRepositoryCommandResultAuthenticatedHistoricalLoadAndTampering": 60,
-    "TestFenceRecoveredRunnersAcceptsArmedPostPublicationRearm": 57,
-    "TestProtectedBaseRefreshReviewedRecoveryRejectsTamperedHistory": 53,
-    "TestRunnerRecoveryAuthorityAuthenticatesControlGaps": 48,
-    "TestProtectedBaseRefreshReservationPreservesCompletedCIRepairParent": 45,
-    "TestAuthenticatePostbuildFailureRefusals": 44,
+    "TestRepositoryCommandResultAuthenticatedHistoricalLoadAndTampering": 68,
+    "TestFenceRecoveredRunnersAcceptsArmedPostPublicationRearm": 42,
+    "TestProtectedBaseRefreshReviewedRecoveryRejectsTamperedHistory": 58,
+    "TestRunnerRecoveryAuthorityAuthenticatesControlGaps": 56,
+    "TestProtectedBaseRefreshReservationPreservesCompletedCIRepairParent": 42,
+    "TestAuthenticatePostbuildFailureRefusals": 40,
     "TestBeginProviderAttemptRejectsInvalidDirectLaunchInput": 41,
-    "TestControlProofFencesEveryStoreAdmissionAtLinearization": 38,
+    "TestControlProofFencesEveryStoreAdmissionAtLinearization": 54,
     "TestCandidateRepairCurrentReadersAndRearmRejectBrokenRecoveryPrefix": 37,
-    "TestCurrentAttestedProviderPairChecksEveryRoleAndRestart": 36,
+    "TestCurrentAttestedProviderPairChecksEveryRoleAndRestart": 31,
     "TestSeededLeaseAdmissionStress": 34,
-    "TestProviderRetryWaitingApprovalRearmDecisionAndMergingRestarts": 33,
+    "TestProviderRetryWaitingApprovalRearmDecisionAndMergingRestarts": 32,
+    "TestPostPublicationRearmProofAfterRestartAcrossStates": 40,
+    "TestTransitionGuardedMergeObservedRequiresSealedExactObservation": 37,
+    "TestCompleteProtectedBaseRefreshRejectsUnreadyOrMismatchedEvidence": 36,
+    "TestMergeObservationPrePublicationRejectsTamperedRecoveredStoppingCancellationLineage": 33,
+    "TestReviewBlockedRecoveryRearmsExactSealedEndpoint": 30,
+    "TestProviderRetryProtectedBaseRefreshRejectsMalformedLineage": 29,
+    "TestActiveGitMutationLeasesQuarantinesInvalidRecoveryFacts": 27,
+    "TestCIPollerAuthorityE2E": 27,
+    "TestTransitionPostbuildRepairRejectsMalformedAndStaleRequests": 25,
+    "TestProviderRetryWaitingApprovalRearmRejectsTamperedLiveProof": 24,
+    "TestAuthoringNonSuccessCompletesWithEmptyBlobAndExactProof": 24,
+    "TestProtectedBaseRefreshAfterWaitingCIRestartAuthenticatesFreshBuilder": 24,
+    "TestRepositoryCommandResourceRetirementRequiresExactDrainedLaunch": 23,
+    "TestPostPublicationReconcilingResumeAuthenticatesBeforeCommit": 23,
+    "TestPostbuildRepairRecoveryRejectsTamperedBoundaryAndUnwitnessedGap": 23,
+    "TestMergeObservationPrePublicationRejectsTamperedResealedCancellationRecovery": 22,
+    "TestFinalReviewTransitionsDeriveManualGuardedSpikeAndRejectAutonomous": 21,
+    "TestV55DispositionsLegacyCandidateRepairAuthorityWithoutRewritingEvidence": 21,
+    "TestVerificationAmendmentDecisionHistoryCrossesRecoveryBeforeDecision": 20,
 }
 RUNTIME_INTEGRATION_SECONDS = {
     "TestPostbuildAmendmentCandidateFinalizationRecovery": 484,
@@ -82,8 +103,9 @@ RUNTIME_INTEGRATION_SECONDS = {
     "TestRepositoryMaterializerRealStoreGitReplay": 43,
 }
 CRASH_RUNTIME_SECONDS = {
-    "TestPostbuildAmendmentCandidateFinalizationRecovery": 540,
-    "TestPostbuildRepairCandidateFinalizationRecovery": 260,
+    "TestPostbuildAmendmentCandidateFinalizationRecovery": 459,
+    "TestRepositoryMaterializerPostbuildAmendmentPreparedIndexRecovery": 491,
+    "TestPostbuildRepairCandidateFinalizationRecovery": 314,
 }
 MODE_WEIGHTS = {
     "store": STORE_RACE_SECONDS,
@@ -92,11 +114,11 @@ MODE_WEIGHTS = {
     "crash-runtime": CRASH_RUNTIME_SECONDS,
 }
 WEIGHT_PROVENANCE = {
-    "other": "measured successful macos run 34416329428; package elapsed",
-    "store": "measured successful macos run 34771148550; race top-level tests",
-    "runtime-race": "measured successful macos run 34416329428; race top-level tests",
+    "other": "measured successful macos run 34783306067; package elapsed",
+    "store": "measured successful shards from macos runs 34771148550 and 34783306067; race top-level tests",
+    "runtime-race": "measured successful macos run 34783306067; race top-level tests",
     "runtime-integration": "measured successful macos run 34771148550; normal top-level tests",
-    "crash-runtime": "measured successful macos run 34771148550; normal crash top-level tests",
+    "crash-runtime": "measured successful macos run 34783306067; normal crash top-level tests",
     "crash-other": "unweighted complete inventory; no inferred timings",
 }
 MAX_OUTPUT_BYTES = 1024 * 1024
