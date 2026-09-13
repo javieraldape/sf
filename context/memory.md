@@ -2,6 +2,39 @@
 
 ## Current truth
 
+- Latest verified checkpoint: `fix/authoring-runtime-diagnostics` is pushed
+  through `c376985c1eaf6b57558a3142143e0a597ce695e8`. Its GitHub ticket-entry
+  run `34736496425` PASS (normal/race CLI, authoring, capture, connected journey,
+  build and repository/docs/secret checks). Broad repository-baseline
+  `34735980022` on capture fix `f97d415` still has one running runtime-race
+  shard and no failures at the last observation; do not call it passed yet.
+  PR #11 remains merged at `638f231`; the follow-up is not merged or installed.
+- The explicitly approved additional draft retry WAS USED ONCE, from verified
+  `f97d415` CI binaries. Preparation passed Claude 2.1.263 / sonnet-4-6; the
+  turn failed after 6.96s: process_exit, exit code 1, stdout absent, stderr
+  present, neither truncated, launch_count=1, signed drain proof valid.
+  This does not establish whether an API request occurred. Home intent was
+  not attempted. No raw stderr was retained or displayed. Exact cause is
+  unknown; do not weaken guards or auto-retry. A new one-attempt approval
+  question is pending. Automatic goal continuations are not approval.
+- Capture regressions exposed inherited bytes.Buffer ReadFrom and WriteString
+  paths bypassing bounded Write. `f97d415` removes embedding, retaining bounded
+  explicit methods; real pipe and optimized-copy regressions pass in GitHub.
+  `310c7c8` adds a connected synthetic CLI draft/save/start/view/watch journey.
+  `c376985` adds closed advisory option-error hints, never raw provider text;
+  its compatibility with actual Claude stderr remains unverified. These fixes
+  do not prove real authoring success or human usability timing.
+- Latest verified artifact is `.context/authoring-acceptance-c376985`, not run.
+  Manifest head equals c376985; processsupervisor.test SHA256 is
+  `33bed1477564caa1559aa6b266b31a90db74a5dc6f5556e6ba974147c5e31006`;
+  sf-dev SHA256 is
+  `eb93e352676cf19c16d957b9ca9776353f9de4aed7e8d3aca50fd70164f177a7`.
+  No local automated builds/tests, live install, daemon or live DB changes.
+  Goal is incomplete pending real draft/home acceptance and user journey
+  observation. Old notes below are historical, including obsolete call counts.
+
+## Historical checkpoints
+
 - Resume after PR #11: post-merge repository-baseline run 34706300171 PASS.
   Host PREPARE_ONLY now PASS (4.01s), so authrenewal is resolved. The two-turn
   opt-in harness was run once from the SHA256-verified 53e6076 CI artifact:

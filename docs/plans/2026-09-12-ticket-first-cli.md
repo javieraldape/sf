@@ -1,6 +1,27 @@
 # Ticket-first CLI, AI authoring and live activity
 
-Status: implementation approved on 2026-09-12; work started on `feat/ticket-first-cli`. Source baseline: main `f632e81`. This is not a shipped-capability statement.
+Status: implementation approved on 2026-09-12; initial work from main `f632e81` merged through PR #11 at `638f231`. Follow-up validation is on `fix/authoring-runtime-diagnostics`. Real AI authoring acceptance remains incomplete; merged source is not proof of working installed inference.
+
+## Current verification checkpoint
+
+- PR #11 merged with all 61 required/reported checks passing; its post-merge
+  repository baseline `34706300171` passed. No live installation was performed.
+- Follow-up `c376985` passed GitHub ticket-entry `34736496425`, covering normal
+  and race CLI tests, no-model authoring/capture regressions, builds, and
+  repository/docs/secret checks. Broad baseline `34735980022` covers the
+  shared capture fix `f97d415` and was still running at this checkpoint.
+- The connected `TestTicketConnectedAuthoringSaveStartViewWatchJourney` proves
+  exact reviewed/saved source through explicit submit/start, scoped view and
+  active/quiet/disconnected/reconnected watch using one synthetic service.
+  This is command-composition evidence, not real inference or human timing.
+- One authorized retry of installed Claude 2.1.263 / sonnet-4-6 prepared
+  successfully, launched once, then exited with code 1 after 6.96s. It returned
+  no stdout, bounded stderr, and a valid signed drain proof. The cause and API
+  request count are unknown; the home-intent turn was not attempted. Another
+  model attempt requires new approval. No raw error text is exposed.
+- Completion still requires successful real draft and home-intent acceptance
+  and honest observation of the five-task user journey. Do not substitute
+  synthetic test timing or preparation success for those outcomes.
 
 ## Goal and decisions
 
@@ -70,7 +91,7 @@ Automated tests/builds run in GitHub under the existing user policy. Full Go sui
 
 Root owns scope, contracts, integration, evidence and review. Implementation lead delegates production coding to child agents. Luna handles bounded research and tests. Shared four-agent capacity requires explicit file ownership: after Luna completes a bounded task, the free slot can host a second coding child for an independent integration surface. Formatting/static diff checks only locally.
 
-Implementation checkpoint: all four packages have connected source and regression tests. Activity tests cover observation before exit, recorder refusal, bounded buffers/frames, stale attempts, reconnect/gaps and viewer detachment. Authoring includes async daemon integration, real-gate lifecycle fixtures, a Darwin native sandbox fixture, migration/reopen coverage, and a read-only interrupted-turn inspection command printed before inference. Home uses a closed seven-action schema and existing deterministic public handlers. Luna supplied independent content/context, activity, sandbox and home tests plus documentation. Root and the delivery lead reviewed source; this is not execution evidence. No automated tests or builds have run, and the implementation is not installed or released. Push/draft-PR authorization and GitHub validation remain pending.
+Initial implementation checkpoint (historical): all four packages had connected source and regression tests before GitHub validation. Activity coverage includes observation before exit, recorder refusal, bounded buffers/frames, stale attempts, reconnect/gaps and viewer detachment. Authoring includes async daemon integration, real-gate lifecycle fixtures, a Darwin native sandbox fixture, migration/reopen coverage, and a read-only interrupted-turn inspection command printed before inference. Home uses a closed seven-action schema and existing deterministic public handlers. Luna supplied independent content/context, activity, sandbox and home tests plus documentation. Root and the delivery lead reviewed source. See the current verification checkpoint above for executed checks and remaining acceptance gaps.
 
 Authoring uses separate v62 session/turn bookkeeping, immutable purpose/context/runtime binding, at most four consented SF turns per session, one undrained authoring launch per channel and a 90-second turn deadline. These are not provider API-request or hard billing caps. The initial safe operation is Claude-only, independently prepared without requiring execution-role qualification. Other providers remain explicitly unavailable for authoring until an equivalent boundary is implemented. Valid but undrainable authoring recovery retains quarantine and blocks further authoring, not ordinary ticket startup; malformed durable evidence still fails closed. Creation performs no inference, context stays in bounded daemon memory, and restart never automatically resends a turn.
 
