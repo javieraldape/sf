@@ -425,6 +425,12 @@ func TestPREndpointSurvivesPausedLeadersAndPostResumeRecovery(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if changed, err := db.FenceRecoveredRunners(ctx, domain.ChannelDev, leader); err != nil || changed != 0 {
+			t.Fatalf("paused startup fence changed=%d err=%v", changed, err)
+		}
+		if err := db.RebindRecoveredPublishedCandidates(ctx, domain.ChannelDev, leader); err != nil {
+			t.Fatalf("paused startup publication recovery: %v", err)
+		}
 		still, _ := db.Ticket(ctx, ticket.Ref)
 		if still.State != domain.StatePaused || still.Version != paused.Version {
 			t.Fatalf("restart resumed endpoint: %+v", still)

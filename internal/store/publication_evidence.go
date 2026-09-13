@@ -2017,7 +2017,7 @@ func (s *Store) LoadPublishedCandidate(ctx context.Context, ref domain.TicketRef
 			}
 		}
 		if ticket.RunnerEpoch == baselineRunner {
-			if leader != value.CurrentFence.LeaderEpoch {
+			if leader != baselineLeader {
 				return PublishedCandidateEvidence{}, ErrStaleFence
 			}
 		} else if validateRunnerRecoveryLedger(ctx, s.db, ref, baselineVersion, baselineRunner, baselineLeader, ticket.Version, ticket.RunnerEpoch, leader) != nil {

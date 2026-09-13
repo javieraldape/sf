@@ -51,7 +51,14 @@ func authenticatePREndpoint(ctx context.Context, q interface {
 	if err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM events WHERE channel=? AND project_id=? AND ticket_id=? AND ticket_version=? AND trigger='operator_start' AND from_state='queued' AND to_state='planning'`, ref.Channel, ref.Project, ref.Ticket, startVersion).Scan(&starts); err != nil || starts != 1 {
 		return 0, "", ErrPublicationEvidence
 	}
+	var endpointEvents int
+	if err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM events WHERE channel=? AND project_id=? AND ticket_id=? AND trigger='endpoint_reached'`, ref.Channel, ref.Project, ref.Ticket).Scan(&endpointEvents); err != nil || endpointEvents != 1 {
+		return 0, "", ErrPublicationEvidence
+	}
 	if err := q.QueryRowContext(ctx, `SELECT e.ticket_version,e.payload,p.witness_digest FROM events e JOIN publication_transition_evidence p ON p.channel=e.channel AND p.project_id=e.project_id AND p.ticket_id=e.ticket_id AND p.ticket_version=e.ticket_version-1 WHERE e.channel=? AND e.project_id=? AND e.ticket_id=? AND e.trigger='endpoint_reached' AND e.from_state='waiting_ci' AND e.to_state='paused'`, ref.Channel, ref.Project, ref.Ticket).Scan(&pauseVersion, &payload, &witness); err != nil || pauseVersion > currentVersion {
+		return 0, "", ErrPublicationEvidence
+	}
+	if currentVersion != pauseVersion && currentVersion != pauseVersion+1 {
 		return 0, "", ErrPublicationEvidence
 	}
 	publication, found, err := loadPublicationEvidenceRow(ctx, q, ref)
@@ -62,6 +69,13 @@ func authenticatePREndpoint(ctx context.Context, q interface {
 	expected, _ := json.Marshal(map[string]string{"endpoint": "pr", "reason": "pr_opened", "pr_url": prURL, "head": publication.Candidate.Snapshot.HeadSHA, "witness_digest": witness})
 	if payload != string(expected) {
 		return 0, "", ErrPublicationEvidence
+	}
+	if currentVersion == pauseVersion {
+		var state domain.State
+		var runner uint64
+		if err := q.QueryRowContext(ctx, `SELECT state,runner_epoch FROM tickets WHERE channel=? AND project_id=? AND id=? AND version=?`, ref.Channel, ref.Project, ref.Ticket, pauseVersion).Scan(&state, &runner); err != nil || state != domain.StatePaused || runner != publication.CurrentFence.RunnerEpoch {
+			return 0, "", ErrPublicationEvidence
+		}
 	}
 	return pauseVersion, witness, nil
 }
@@ -82,8 +96,9 @@ func authenticatePREndpointResume(ctx context.Context, q interface {
 	if err != nil || resumedVersion != pauseVersion+1 {
 		return ErrPublicationEvidence
 	}
+	expectedPayload, _ := json.Marshal(map[string]string{"endpoint": "pr", "witness_digest": witness})
 	var count int
-	if err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM ticket_endpoint_consumptions c JOIN events e ON e.channel=c.channel AND e.project_id=c.project_id AND e.ticket_id=c.ticket_id AND e.ticket_version=c.consumed_ticket_version WHERE c.channel=? AND c.project_id=? AND c.ticket_id=? AND c.endpoint='pr' AND c.paused_ticket_version=? AND c.consumed_ticket_version=? AND c.publication_witness_digest=? AND c.leader_epoch>0 AND c.runner_epoch>0 AND e.trigger='operator_resume' AND e.from_state='paused' AND e.to_state='waiting_ci'`, ref.Channel, ref.Project, ref.Ticket, pauseVersion, resumedVersion, witness).Scan(&count); err != nil || count != 1 {
+	if err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM ticket_endpoint_consumptions c JOIN events e ON e.channel=c.channel AND e.project_id=c.project_id AND e.ticket_id=c.ticket_id AND e.ticket_version=c.consumed_ticket_version WHERE c.channel=? AND c.project_id=? AND c.ticket_id=? AND c.endpoint='pr' AND c.paused_ticket_version=? AND c.consumed_ticket_version=? AND c.publication_witness_digest=? AND c.leader_epoch>0 AND c.runner_epoch>0 AND e.trigger='operator_resume' AND e.from_state='paused' AND e.to_state='waiting_ci' AND e.payload=?`, ref.Channel, ref.Project, ref.Ticket, pauseVersion, resumedVersion, witness, string(expectedPayload)).Scan(&count); err != nil || count != 1 {
 		return ErrPublicationEvidence
 	}
 	return nil
