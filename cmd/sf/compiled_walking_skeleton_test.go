@@ -516,15 +516,15 @@ func compiledDevWalkingSkeletonConfigured(t *testing.T, mergeMode domain.MergeMo
 		// Requalify through the public CLI before testing explicit continuation;
 		// the stored PR endpoint must remain paused even with a runnable scheduler.
 		compiledWalkingSkeletonCLI(t, binary, home, qualificationArgs...)
-		status := compiledWalkingSkeletonCLI(t, binary, home, "status", string(ref.Ticket), "--json")
+		status := compiledWalkingSkeletonCLI(t, binary, home, "ticket", "status", string(ref.Ticket), "--json")
 		if !strings.Contains(string(status), `"state":"paused"`) || !strings.Contains(string(status), `"blocked_code":"pr_opened"`) || !strings.Contains(string(status), "continue_after_pr") {
 			t.Fatalf("restarted PR endpoint status=%s", status)
 		}
-		show := compiledWalkingSkeletonCLI(t, binary, home, "show", string(ref.Ticket), "--json")
+		show := compiledWalkingSkeletonCLI(t, binary, home, "ticket", "view", string(ref.Ticket), "--json")
 		if !strings.Contains(string(show), `"state":"paused"`) || !strings.Contains(string(show), `"blocked_code":"pr_opened"`) {
 			t.Fatalf("ticket view lost PR endpoint state=%s", show)
 		}
-		invalid := exec.Command(binary, "status", "not-a-real-ticket", "--json")
+		invalid := exec.Command(binary, "ticket", "status", "not-a-real-ticket", "--json")
 		invalid.Env = os.Environ()
 		invalidOutput, invalidErr := invalid.CombinedOutput()
 		if invalidErr == nil || !strings.Contains(string(invalidOutput), `"code":"ticket_not_found"`) || strings.Contains(string(invalidOutput), "continue_after_pr") {
