@@ -2,6 +2,125 @@
 
 ## Current truth
 
+- REAL AUTHORING ACCEPTANCE PASSED on `cc55929652b1462c4e173497c63e63df3ac2216d`.
+  GitHub `34749449916` PASS; normal push trigger resolved repeated dispatch
+  HTTP500/502 failures. Exact manifest/checksums verified before execution.
+  CI and affected-host no-model ICU probe both show baseline count=false,
+  candidate count=true, with outside read/write and fork denied in both.
+  Host probe PASS0.27s. Installed Claude2.1.263/Sonnet4.6 acceptance session68808
+  PASS24.16s: actual draft and home-intent completed, each one launch with
+  valid signed drain, replay returned stored results, isolated ticket inventory
+  remained empty. No automatic retry, live install/daemon/DB/ticket mutation.
+  Remaining: final full GitHub regression, pre-landing review, PR/merge and
+  honest journey evidence report. Connected CLI journey is synthetic, not a
+  timed human usability study or live factory-ticket run.
+
+- No-inference static crash isolation found the faulting instruction at
+  unslid `0x102cf1580` (`brk #0xbb08`) reached from `0x102cefb98` after
+  `_uenum_count`, immediately following `_ucal_openTimeZoneIDEnumeration`.
+  Exact pinned Mach-O imports establish the ICU APIs (not guessed from strings).
+  Exact-PID kernel denial at03:08:52.855620 names fixed OS timezone root
+  `/private/var/db/timezone` and `icutz44l.dat`; earlier zoneinfo reads denied.
+  Host timezone root is root:wheel0555; root-owned symlinks stay in its tz tree.
+  This strongly localizes failed ICU timezone initialization, pending native
+  baseline/candidate reproduction. Apple XNU hardcodes FOUNDATION for certain
+  unrecoverable user breakpoints: namespace alone does NOT identify Foundation.
+  Generic Foundation probe was held before any edit. Delivery lead/child now
+  preparing a no-model ICU fixture and narrow read-only OS timezone candidate;
+  no global var access, fork permission, raw logs or further inference.
+
+- `1a64406519f131c2fd5c152fe4d0fbde4ff463e0` passed exact-head GitHub
+  `34748868420` (earlier dispatch errors resolved). Manifest and hashes verified:
+  test `b22ead9f98184216d1a304a27420bbb4cd79cac475693ae31ac8854982ffd8cf`,
+  gate `70d8685b4042adaebe64e9c284cd84e8a9baa6bd744bb27325e2b583637f841d`.
+  One installed draft in session11337 FAILED7.14s: process_exit, exit=-1,
+  signal9, no captured stdout/stderr, one launch, valid signed drain; no
+  home or retry. Real drafting is NOT repaired. Matching macOS crash report
+  for PID74259 records EXC_BREAKPOINT/SIGKILL, FOUNDATION termination code1.
+  Exact-PID short-window logs show fork/shared-memory/file/preference denials;
+  no denial is yet proved causal. Normal SF timeout/record failure paths do
+  not match the reported stage. Do not relax process-fork or broad filesystem
+  access; next is bounded non-inference crash isolation. No live install,
+  daemon/DB/ticket mutation or raw provider/log contents were exposed.
+
+- Candidate repair in progress: official Claude environment documentation
+  (`https://code.claude.com/docs/en/env-vars`) documents macOS internal temp
+  default `/tmp`, separately controlled by `CLAUDE_CODE_TMPDIR`, with a
+  per-UID child directory. Pinned binary contains that variable/literal.
+  SF supplied ordinary TMPDIR only. Bind authoring-only internal temp to the
+  already canonical private tmp and version policy v3; no global directory
+  grant or shared execution change. This is a documented containment mismatch,
+  not yet proof of the observed outside/other failure's exact path. Next exact
+  CI/native/installed result must determine whether it repairs real drafting.
+
+- `ea54e26` CI `34748358632` PASS. Native descriptor probe: stdin/fd0
+  reopen succeeds; stdout/stderr/fd1/fd2 reopen fails with permission. This
+  proves a profile property, NOT the installed drafting cause. Verified artifact
+  test SHA256 `47984e012c5eb7fdfb59291c5139388be0b92af9cea19c352393313b559f2e3b`,
+  gate `86495b1c1fe44ce4ccb64c6200675e25234bd903de067f195311ac415b3c7c78`.
+  One target-classifying installed draft, session46451, FAIL7.05s:
+  permission/open, lexical root=outside,name=other, exit1/no stdout/bounded
+  stderr, one launch and valid signed drain. No home/retry. Therefore no
+  installed evidence supports a stdio allowance; keep profile unchanged.
+  Gate FD3 is NOT closed before exec (read-only gate pipe at EOF), contrary
+  to a suggested assumption; no code change made. Next is coarse outside-root
+  classification/static provider temp/trust-path research, never raw paths.
+
+- Exact `b6f53aa` replacement CI `34747741534` PASS. Artifact manifest and
+  checksums verified: test `07d4ccdc7dd8ad4ba01cf4ae714909fcf81d51a21ac36d94689d4d4a7a192db6`,
+  gate `10a877ed840e5aa9bce75003d68a4fd58a0b6fc41a5b3f0da9d055695bbc5832`.
+  One installed instrumented draft ran in session45533 and failed7.06s:
+  process_exit/exit1, no stdout, bounded stderr, permission family, reported
+  operation=open, one launch, valid signed drain. No home turn or retry.
+  This narrows the report to file opening, but does not prove the actual
+  syscall/path/sandbox cause or API/billing occurrence. Root is investigating
+  fixed print-path file access before any permission change; profile untouched.
+
+- Operation diagnostic `b6f53aa` is frozen/reviewed by delivery lead, coding
+  child, root and independent Luna. It adds closed reported operation frames
+  only, after stable capture; no permission/argv/drain changes. The first
+  post-push workflow dispatch `34747492649` unexpectedly selected prior
+  `2d71fb5`; manifest verification caught this and no draft used that artifact.
+  Remote branch was independently confirmed at `b6f53aa`; replacement run
+  `34747741534` was verified at that exact SHA before waiting. Do not count
+  the stale run as operation-classifier coverage.
+
+- `2d71fb5359127e9bf38d1bce79bdfc4124c6f491` GitHub ticket-entry
+  `34746965195` PASS. Manifest SHA and downloaded binary checksums matched;
+  test SHA256 `a1866f2d9b776d78c878e1fb4a97e8f78611c5f37219efd97115c6d67fc1f6c2`.
+  Installed authenticated sandbox preflight ran once in session 54821:
+  PASS 5.75s, exit0, valid OAuth status shape, stdout present, stderr absent,
+  capture complete, Wait and owned group absence observed. No model prompt,
+  Store/gate launch or inference; only fixed preparation/auth-status probes.
+  Thus authenticated status works under the same private native profile.
+  Remaining permission-family failure is drafting-path-specific, not a proven
+  general authentication failure or a confirmed sandbox syscall denial.
+  Next is bounded static diagnosis of print startup, not another blind draft.
+
+- `0f72b93` GitHub ticket-entry `34746364160` PASS (CLI normal/race,
+  authoring regressions, build, repository/docs/secret checks). Verified artifact
+  SHA256: test `c0ca4dd1d387692827c83a6832f4776e42bd878ba0f405dc119f7f52951a46d7`,
+  gate `1947243465f0eae7069822a1d2aa1ebf29428b4b83b9f815faf2f32a6b71ed75`.
+  Initial execution was rejected before launch for insufficient payload evidence;
+  root traced EncodeRequest and fixed fixture inputs (empty reference, no project
+  content) and the same command was approved. Exactly one draft then ran in
+  session 90453: FAIL 7.19s, process_exit/exit1, stdout absent, bounded stderr,
+  option hint unclassified, process-reported error family permission, one launch,
+  valid signed drain. No home turn/retry. This is an untrusted permission-token
+  report, not proof of a syscall, sandbox cause, or API request. Next: separate
+  no-inference authenticated status probe under the exact authoring profile.
+  Do not relax permissions or repeat drafting without a new bounded decision.
+
+- 2026-09-13 continuation: PR #12 merged at `3dda60b` with 61 passing
+  pre-merge checks; merged tree equals reviewed `43ac065`. The user renewed
+  authorization to continue. New branch `fix/authoring-startup-classification`
+  adds only a bounded advisory OS-error family, preserving raw-output secrecy,
+  exact option hints, and launch/drain behavior. Root wired capture/harness;
+  delivery lead delegated classifier/tests to its coding child and Luna reviewed
+  the diagnostic boundary. GitHub validation pending; no new provider call,
+  live installation, daemon restart, or ticket mutation. The actual authoring
+  exit cause remains unknown; do not substitute this instrumentation for success.
+
 - Latest merge-authorized checkpoint: the `10cd088` CI-built real authoring
   attempt also failed once (7.98s, process_exit/exit 1, no stdout, bounded
   stderr, unclassified hint, one launch and valid drain proof). Home remains

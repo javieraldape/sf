@@ -1,8 +1,79 @@
 # Ticket-first CLI, AI authoring and live activity
 
-Status: implementation approved on 2026-09-12; initial work from main `f632e81` merged through PR #11 at `638f231`. Follow-up validation is on `fix/authoring-runtime-diagnostics`. Real AI authoring acceptance remains incomplete; merged source is not proof of working installed inference.
+Status: implementation approved on 2026-09-12; initial work from main `f632e81` merged through PR #11 at `638f231`. PR #12 merged follow-up repairs at `3dda60b`. Real draft and home-intent acceptance passed on `cc55929` on 2026-09-13. Final full regression and merging `fix/authoring-startup-classification` remain. See the [acceptance evidence](../reports/2026-09-13-authoring-runtime-acceptance.md).
 
 ## Current verification checkpoint
+
+- `cc55929` passed GitHub `34749449916` and the actual installed Claude
+  authoring harness (24.16s): typed draft and home-list intent, one launch
+  each, signed drain, durable result replay and no ticket creation. CI and
+  affected-host no-model ICU probes both reproduced old-profile enumeration
+  failure and candidate success, retaining outside-read/write/fork denial.
+  The historical failed attempts below are retained as diagnostic evidence,
+  not the current installed result. Full regression and merge remain pending.
+
+- Next candidate: policy v4 adds read-only access to the two fixed macOS
+  timezone roots, not their parent directories. Exact-address disassembly
+  traces the installed trap to ICU timezone enumeration; the matching PID
+  was denied its system ICU timezone data. A CI-built no-model helper will
+  compare old/new profiles and require outside reads/writes and fork denial.
+  Neither this source change nor a passing helper substitutes for installed
+  draft/home acceptance. No new model call has run for this candidate.
+
+- `1a64406` passed exact-head GitHub run `34748868420`. Its manifest-verified
+  installed draft failed once in7.14s with signal9, no captured output, one
+  launch and valid signed drain; home was not attempted. The matching macOS
+  crash report records FOUNDATION termination code1. Sandbox denials exist
+  in the same PID/window but their causal relationship is not established.
+  The private-temp change is not demonstrated to fix real drafting. Keep
+  permissions unchanged while isolating the native startup failure.
+
+- Candidate private-temp repair: authoring now binds `CLAUDE_CODE_TMPDIR`
+  to its existing canonical private temp directory, with policy v3 rejecting
+  old bindings. Claude documents that its internal temp defaults to `/tmp`
+  on macOS independently of ordinary `TMPDIR`. No sandbox permission is
+  expanded. GitHub and real installed acceptance are still required before
+  calling this the observed drafting fix. [Environment reference](https://code.claude.com/docs/en/env-vars).
+
+- `ea54e26` passed GitHub `34748358632`. Native no-model evidence shows
+  stdout/stderr reopen is denied, while stdin reopen succeeds. However the
+  one installed target-classifying attempt failed with outside/other rather
+  than a device target (7.05s, permission/open, signed drain, no home/retry).
+  The device hypothesis is not corroborated; no permissions are changed.
+  The exact private-path/system/temp cause is still unproven.
+
+- Operation diagnostic `b6f53aa` passed exact-head GitHub `34747741534`.
+  One verified installed draft failed in7.06s with permission/open reported
+  categories, no stdout, bounded stderr and a valid signed drain. No home
+  or retry followed. Authentication status still passes separately; the
+  remaining print-path file-opening cause needs evidence, not permission
+  broadening. Earlier dispatch `34747492649` selected stale `2d71fb5` and
+  was not used for the instrumented draft.
+
+- Commit `2d71fb5` passed GitHub ticket-entry `34746965195`. Its manifest-
+  verified installed authenticated sandbox preflight passed in 5.75s: fixed
+  auth status exited0 with valid OAuth shape, no stderr, complete capture,
+  and observed Wait/group absence. This used no model prompt or inference.
+  Authentication status therefore works inside the same authoring profile;
+  real drafting still fails and its print-specific cause remains unproven.
+  No production permissions were widened and no additional draft was run.
+
+- Diagnostic commit `0f72b93` passed GitHub ticket-entry `34746364160`.
+  Its verified installed draft attempt ran once and failed in 7.19s:
+  process_exit/exit1, no stdout, bounded stderr, option hint unclassified,
+  process-reported OS-error family permission, one launch and signed drain.
+  No home turn or retry. The new category narrows the report but does not prove
+  which operation failed or whether a provider API call occurred. Next is a
+  separately opted-in no-inference authenticated status probe inside the same
+  native authoring profile; no permissions or production argv are widened.
+
+- PR #12 merged with all 61 reported pre-merge checks passing. The renewed
+  continuation is scoped first to diagnosis: a separate bounded process-reported
+  OS-error family can classify multiline stderr without exposing fragments.
+  It is advisory only and cannot establish a syscall, sandbox denial,
+  provider/API origin, billing, or permission to retry. The existing exact
+  option classifier and all launch/drain authority stay intact. New diagnostic
+  regressions are pending GitHub validation; no new installed attempt ran.
 
 - Latest authorized `10cd088` installed run failed once in 7.98s with the
   same process_exit/exit 1 and no stdout; bounded stderr remains unclassified.

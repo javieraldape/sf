@@ -14,7 +14,7 @@ import (
 )
 
 func authoringPolicyDigest() string {
-	return contracts.AuthoringDigest([]byte("sf.authoring.claude/v2:2.1.263:private-cwd:empty-tools:empty-mcp:subscription-oauth:restricted:safe-mode:json-schema:no-persistence:max-turns3:structured-retries1:90s:64KiB:private-filesystem\x00" + authoring.Schema + "\x00" + authoring.Instruction + "\x00" + authoring.HomeSchema + "\x00" + authoring.HomeInstruction))
+	return contracts.AuthoringDigest([]byte("sf.authoring.claude/v4:2.1.263:private-cwd:empty-tools:empty-mcp:subscription-oauth:restricted:safe-mode:json-schema:no-persistence:max-turns3:structured-retries1:90s:64KiB:private-filesystem:private-internal-tmp:system-timezone-read\x00" + authoring.Schema + "\x00" + authoring.Instruction + "\x00" + authoring.HomeSchema + "\x00" + authoring.HomeInstruction))
 }
 
 // PrepareAuthoring observes version/help/OAuth only. It does not qualify an

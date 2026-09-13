@@ -143,7 +143,7 @@ func TestInstalledClaudeAuthoringPurposes(t *testing.T) {
 			}
 			stopFinish()
 			d := processsupervisor.AuthoringRunDiagnostics(runErr)
-			t.Fatalf("authoring failure: stage=%s exit_observed=%t exit_code=%d signal=%d capture_known=%t stdout_present=%t stderr_present=%t stdout_truncated=%t stderr_truncated=%t process_reported_hint=%s (advisory only; not origin/API proof) proof_valid=%t launch_count=%d; no retry attempted", d.Stage, d.ExitObserved, d.ExitCode, d.Signal, d.CaptureKnown, d.StdoutPresent, d.StderrPresent, d.StdoutTruncated, d.StderrTruncated, d.ProcessReportedHint, proofValid, launches)
+			t.Fatalf("authoring failure: stage=%s exit_observed=%t exit_code=%d signal=%d capture_known=%t stdout_present=%t stderr_present=%t stdout_truncated=%t stderr_truncated=%t process_reported_hint=%s process_reported_error_family=%s process_reported_operation=%s process_reported_path_root=%s process_reported_path_name=%s (advisory lexical reports only; not origin/causal-target/API proof) proof_valid=%t launch_count=%d; no retry attempted", d.Stage, d.ExitObserved, d.ExitCode, d.Signal, d.CaptureKnown, d.StdoutPresent, d.StderrPresent, d.StdoutTruncated, d.StderrTruncated, d.ProcessReportedHint, d.ProcessReportedErrorFamily, d.ProcessReportedOperation, d.ProcessReportedPathRoot, d.ProcessReportedPathName, proofValid, launches)
 		}
 		storedLaunch, err := db.AuthoringTurn(finishCtx, domain.ChannelDev, session.ID, "only-turn")
 		if err != nil || launches != 1 || storedLaunch.State != "launched" || storedLaunch.Launch.PID <= 0 || storedLaunch.Launch.PID != storedLaunch.Launch.PGID || storedLaunch.Launch.BootIdentity == "" || storedLaunch.Launch.ProcessStartIdentity == "" {

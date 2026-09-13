@@ -121,7 +121,7 @@ func (s *Supervisor) RunAuthoring(ctx context.Context, claim contracts.Authoring
 	args := append(append([]string{"__provider_gate"}, prefix...), providerArgs...)
 	cmd := exec.Command(self, args...)
 	cmd.Dir = tmp
-	cmd.Env = append(env, "MAX_STRUCTURED_OUTPUT_RETRIES=1")
+	cmd.Env = append(env, "MAX_STRUCTURED_OUTPUT_RETRIES=1", "CLAUDE_CODE_TMPDIR="+tmp)
 	cmd.Stdin = bytes.NewReader(stdin)
 	cmd.ExtraFiles = []*os.File{read}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -245,6 +245,9 @@ func (s *Supervisor) RunAuthoring(ctx context.Context, claim contracts.Authoring
 	diagnostic.StdoutPresent, diagnostic.StderrPresent = stdout.Len() != 0, stderr.Len() != 0
 	diagnostic.StdoutTruncated, diagnostic.StderrTruncated = stdout.truncated, stderr.truncated
 	diagnostic.ProcessReportedHint = classifyAuthoringStderr(stderr.Bytes(), stderr.truncated)
+	diagnostic.ProcessReportedErrorFamily = classifyAuthoringErrorFamily(stderr.Bytes(), stderr.truncated)
+	diagnostic.ProcessReportedOperation = classifyAuthoringOperation(stderr.Bytes(), stderr.truncated)
+	diagnostic.ProcessReportedPathRoot, diagnostic.ProcessReportedPathName = classifyAuthoringPath(stderr.Bytes(), stderr.truncated, home, tmp, trusted.stagedDir)
 	if e := s.proveGone(r); e != nil {
 		diagnostic.Stage = "drain"
 		cleanSafe, releaseSafe = false, false

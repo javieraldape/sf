@@ -64,7 +64,11 @@ func TestAuthoringSubscriptionArgvAndPolicyBinding(t *testing.T) {
 	const oldPolicy = "sf.authoring.claude/v1:2.1.263:private-cwd:empty-tools:empty-mcp:bare:restricted:safe-mode:json-schema:no-persistence:max-turns3:structured-retries1:90s:64KiB:private-filesystem"
 	schemas := "\x00" + authoring.Schema + "\x00" + authoring.Instruction + "\x00" + authoring.HomeSchema + "\x00" + authoring.HomeInstruction
 	oldDigest := contracts.AuthoringDigest([]byte(oldPolicy + schemas))
-	newPolicy := strings.Replace(strings.Replace(oldPolicy, "/v1:", "/v2:", 1), ":bare:", ":subscription-oauth:", 1)
+	v2Policy := strings.Replace(strings.Replace(oldPolicy, "/v1:", "/v2:", 1), ":bare:", ":subscription-oauth:", 1)
+	v2Digest := contracts.AuthoringDigest([]byte(v2Policy + schemas))
+	v3Policy := strings.Replace(v2Policy, "/v2:", "/v3:", 1) + ":private-internal-tmp"
+	v3Digest := contracts.AuthoringDigest([]byte(v3Policy + schemas))
+	newPolicy := strings.Replace(v3Policy, "/v3:", "/v4:", 1) + ":system-timezone-read"
 	if authoringPolicyDigest() == oldDigest || authoringPolicyDigest() != contracts.AuthoringDigest([]byte(newPolicy+schemas)) {
 		t.Fatal("subscription policy was not immutably versioned")
 	}
@@ -73,6 +77,39 @@ func TestAuthoringSubscriptionArgvAndPolicyBinding(t *testing.T) {
 	claim := contracts.AuthoringClaim{Identity: domain.ProviderIdentity{Provider: "claude", Model: "claude-sonnet-4-6", Family: "anthropic-claude", Version: "2.1.263"}, BinaryDigest: digest, AuthDigest: digest, PolicyDigest: oldDigest}
 	if _, _, err := s.acquireAuthoring(claim); !errors.Is(err, ErrUnclear) {
 		t.Fatal("old bare policy claim admitted under new subscription policy")
+	}
+	claim.PolicyDigest = v2Digest
+	if _, _, err := s.acquireAuthoring(claim); !errors.Is(err, ErrUnclear) {
+		t.Fatal("old policy without private internal temp admitted")
+	}
+	stale := s.authoringStages[claim.Identity.Model]
+	stale.policyDigest = v2Digest
+	s.authoringStages[claim.Identity.Model] = stale
+	if _, _, err := s.acquireAuthoring(claim); !errors.Is(err, ErrUnclear) {
+		t.Fatal("matching old capability and claim bypassed current private temp policy")
+	}
+	claim.PolicyDigest = v3Digest
+	stale.policyDigest = v3Digest
+	s.authoringStages[claim.Identity.Model] = stale
+	if _, _, err := s.acquireAuthoring(claim); !errors.Is(err, ErrUnclear) {
+		t.Fatal("matching v3 capability and claim bypassed current timezone policy")
+	}
+}
+
+func TestAuthoringPrivateInternalTemporaryOverridesHost(t *testing.T) {
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal("canonical fixture root unavailable")
+	}
+	t.Setenv("TMPDIR", root)
+	t.Setenv("CLAUDE_CODE_TMPDIR", "/outside/host-value")
+	s, claim, input := gatedAuthoringFixture(t, `cat >/dev/null
+test -n "$CLAUDE_CODE_TMPDIR" && test "$CLAUDE_CODE_TMPDIR" = "$TMPDIR" && test "$CLAUDE_CODE_TMPDIR" = "$(pwd -P)" || exit 9
+printf private-temp-ok`)
+	_, proof, runErr := s.RunAuthoring(context.Background(), claim, input, func(context.Context, contracts.ProviderLaunch) error { return nil })
+	d := AuthoringRunDiagnostics(runErr)
+	if !errors.Is(runErr, authoring.ErrContent) || d.Stage != "output_json" || !d.ExitObserved || d.ExitCode != 0 || !d.StdoutPresent || !contracts.VerifyAuthoringProof(s.PublicKey(), claim, claim.LeaderEpoch, proof) {
+		t.Fatal("authoring internal temporary environment did not override host or drain")
 	}
 }
 
