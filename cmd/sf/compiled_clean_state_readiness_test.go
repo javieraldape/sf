@@ -31,6 +31,10 @@ func TestCompiledCleanStateReadinessRefusalsAndOfflineStacks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	runnerHome, err = filepath.EvalSymlinks(runnerHome)
+	if err != nil || runnerHome == string(filepath.Separator) {
+		t.Fatalf("invalid runner home for protected executable fixture: %v", err)
+	}
 	for _, fixture := range []struct {
 		name       string
 		files      map[string]string
@@ -59,14 +63,17 @@ func TestCompiledCleanStateReadinessRefusalsAndOfflineStacks(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			relative, err := filepath.Rel(runnerHome, binDir)
-			if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			if filepath.Dir(binDir) != runnerHome || !strings.HasPrefix(filepath.Base(binDir), ".sf-clean-state-gh-") {
 				t.Fatal("fake gh directory escaped runner home")
 			}
+			t.Cleanup(func() {
+				if err := os.RemoveAll(binDir); err != nil {
+					t.Errorf("remove fake gh fixture: %v", err)
+				}
+			})
 			if err := os.Chmod(binDir, 0700); err != nil {
 				t.Fatal(err)
 			}
-			t.Cleanup(func() { _ = os.RemoveAll(binDir) })
 			gh := filepath.Join(binDir, "gh")
 			if err := os.WriteFile(gh, []byte("#!/bin/sh\ncase \"$1 $2\" in\n  \"--version \"*) echo 'gh version 2.0.0'; exit 0 ;;\n  \"auth status\"*) echo 'not logged in' >&2; exit 1 ;;\n  *) exit 1 ;;\nesac\n"), 0700); err != nil {
 				t.Fatal(err)
