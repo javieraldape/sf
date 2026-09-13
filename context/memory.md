@@ -2,6 +2,15 @@
 
 ## Current truth
 
+- Latest merge-authorized checkpoint: the `10cd088` CI-built real authoring
+  attempt also failed once (7.98s, process_exit/exit 1, no stdout, bounded
+  stderr, unclassified hint, one launch and valid drain proof). Home remains
+  unattempted; no retry followed. The reproduced capture/TMP repairs remain
+  valid, but they do not establish functioning real AI authoring. User has
+  authorized creating/merging this repair branch; PR/merge must disclose the
+  unresolved acceptance gate, preserve restrictions, and pass fresh CI.
+  Merging independently verified repairs does not complete the overall goal.
+
 - 2026-09-13: the explicitly approved corrected draft attempt ran ONCE from
   verified `c62b45d` binaries and failed after 7.79s: process_exit/exit 1,
   no stdout, bounded stderr, unclassified hint, one launch, valid drain proof.

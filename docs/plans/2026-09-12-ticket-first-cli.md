@@ -4,6 +4,14 @@ Status: implementation approved on 2026-09-12; initial work from main `f632e81` 
 
 ## Current verification checkpoint
 
+- Latest authorized `10cd088` installed run failed once in 7.98s with the
+  same process_exit/exit 1 and no stdout; bounded stderr remains unclassified.
+  One launch and signed drain proof were verified. Home intent did not run.
+  No automatic retry. The user authorized merging the independently tested
+  repair branch; the PR must disclose that real authoring is still incomplete.
+  The documented bare incompatibility and reproduced TMP bug were real,
+  but neither proves the remaining process-exit cause. Do not claim completion.
+
 - 2026-09-13: corrected `c62b45d` real draft attempt failed once in 7.79s,
   exit 1/no stdout/bounded stderr/unclassified hint, one launch and valid
   drain proof. No home turn or retry. Bare-mode correction was insufficient.
