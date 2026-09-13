@@ -31,6 +31,7 @@ jobs:
         run: |
           go test -race -p 1 -count=1 ./internal/workflowruntime -run '^Test(Scheduler|Runtime|Admission|ControlBundle|StoreBackedPostOpen)'
           go test -race -p 1 -count=1 ./internal/codexprovider
+          go test -race -p 1 -count=1 ./internal/providercoord
       - name: Production worker configuration
         run: go test -p 1 -count=1 ./cmd/sf -run '^TestWorkflowWorkerCountIsBoundedAndOptIn$'
       - name: Durable shared-account capacity boundary

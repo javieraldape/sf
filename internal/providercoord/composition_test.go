@@ -68,18 +68,25 @@ func TestComposeQualifiedUsesExactThreeRoleSelection(t *testing.T) {
 	if _, _, err := db.SelectProviderSet(ctx, domain.ChannelDev, ids[0], ids[1], ids[2], time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
-	coordinator, err := ComposeQualified(ctx, domain.ChannelDev, db, process, candidates, 2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for role, name := range map[Role]string{RolePlanner: "route-cursor", RoleBuilder: "route-claude", RoleReviewer: "route-codex"} {
-		route := coordinator.routes[role]
-		if route.Primary != name || route.Capacity != 2 || route.Fallback != "" {
-			t.Fatalf("incorrect %s route: %+v", role, route)
+	for _, capacity := range []int{1, 2, 3} {
+		coordinator, err := ComposeQualified(ctx, domain.ChannelDev, db, process, candidates, capacity)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for role, name := range map[Role]string{RolePlanner: "route-cursor", RoleBuilder: "route-claude", RoleReviewer: "route-codex"} {
+			route := coordinator.routes[role]
+			if route.Primary != name || route.Capacity != capacity || route.Fallback != "" {
+				t.Fatalf("incorrect %s route: %+v", role, route)
+			}
 		}
 	}
-	if process.registrations != 3 {
+	if process.registrations != 9 {
 		t.Fatal("missing registration")
+	}
+	for _, capacity := range []int{0, 4} {
+		if _, err := ComposeQualified(ctx, domain.ChannelDev, db, process, candidates, capacity); err == nil {
+			t.Fatalf("invalid capacity %d accepted", capacity)
+		}
 	}
 	assertUnavailable := func(candidates []RuntimeCandidate) {
 		t.Helper()

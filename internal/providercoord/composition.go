@@ -25,7 +25,7 @@ type runtimeRegistrar interface {
 // substituted route. Store rechecks admission at launch; composition is not
 // a lease or an authority snapshot for later attempts.
 func ComposeQualified(ctx context.Context, channel domain.Channel, database *store.Store, process contracts.ProcessSupervisor, candidates []RuntimeCandidate, capacity int) (*Coordinator, error) {
-	if database == nil || process == nil || !channel.Valid() || capacity < 1 || capacity > 2 {
+	if database == nil || process == nil || !channel.Valid() || capacity < 1 || capacity > 3 {
 		return nil, errors.New("valid provider composition inputs required")
 	}
 	unavailable := func() (*Coordinator, error) { return New(NewRegistry(), map[Role]Route{}, database, nil, process) }
