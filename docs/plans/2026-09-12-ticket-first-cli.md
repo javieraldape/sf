@@ -1,8 +1,16 @@
 # Ticket-first CLI, AI authoring and live activity
 
-Status: implementation approved on 2026-09-12; initial work from main `f632e81` merged through PR #11 at `638f231`. Follow-up validation is on `fix/authoring-runtime-diagnostics`. Real AI authoring acceptance remains incomplete; merged source is not proof of working installed inference.
+Status: implementation approved on 2026-09-12; initial work from main `f632e81` merged through PR #11 at `638f231`. PR #12 merged follow-up repairs at `3dda60b`. Further diagnosis is on `fix/authoring-startup-classification`. Real AI authoring acceptance remains incomplete; merged source is not proof of working installed inference.
 
 ## Current verification checkpoint
+
+- PR #12 merged with all 61 reported pre-merge checks passing. The renewed
+  continuation is scoped first to diagnosis: a separate bounded process-reported
+  OS-error family can classify multiline stderr without exposing fragments.
+  It is advisory only and cannot establish a syscall, sandbox denial,
+  provider/API origin, billing, or permission to retry. The existing exact
+  option classifier and all launch/drain authority stay intact. New diagnostic
+  regressions are pending GitHub validation; no new installed attempt ran.
 
 - Latest authorized `10cd088` installed run failed once in 7.98s with the
   same process_exit/exit 1 and no stdout; bounded stderr remains unclassified.

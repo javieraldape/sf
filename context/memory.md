@@ -2,6 +2,16 @@
 
 ## Current truth
 
+- 2026-09-13 continuation: PR #12 merged at `3dda60b` with 61 passing
+  pre-merge checks; merged tree equals reviewed `43ac065`. The user renewed
+  authorization to continue. New branch `fix/authoring-startup-classification`
+  adds only a bounded advisory OS-error family, preserving raw-output secrecy,
+  exact option hints, and launch/drain behavior. Root wired capture/harness;
+  delivery lead delegated classifier/tests to its coding child and Luna reviewed
+  the diagnostic boundary. GitHub validation pending; no new provider call,
+  live installation, daemon restart, or ticket mutation. The actual authoring
+  exit cause remains unknown; do not substitute this instrumentation for success.
+
 - Latest merge-authorized checkpoint: the `10cd088` CI-built real authoring
   attempt also failed once (7.98s, process_exit/exit 1, no stdout, bounded
   stderr, unclassified hint, one launch and valid drain proof). Home remains

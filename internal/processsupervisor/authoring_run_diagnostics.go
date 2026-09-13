@@ -20,6 +20,9 @@ type AuthoringRunDiagnostic struct {
 	// ProcessReportedHint is an untrusted advisory category, not proof of
 	// origin, root cause, or whether any provider API request occurred.
 	ProcessReportedHint string
+	// ProcessReportedErrorFamily classifies only reported OS-code tokens. It
+	// does not establish an actual syscall, sandbox denial, origin, or API call.
+	ProcessReportedErrorFamily string
 }
 
 type authoringRunError struct {
@@ -40,11 +43,17 @@ func AuthoringRunDiagnostics(err error) AuthoringRunDiagnostic {
 		d := failure.diagnostic
 		if !d.CaptureKnown {
 			d.ProcessReportedHint = ""
+			d.ProcessReportedErrorFamily = ""
 		} else {
 			switch d.ProcessReportedHint {
 			case "unknown_option", "invalid_option_value":
 			default:
 				d.ProcessReportedHint = "unclassified"
+			}
+			switch d.ProcessReportedErrorFamily {
+			case "permission", "path", "read_only", "storage", "resource", "ambiguous", "unclassified":
+			default:
+				d.ProcessReportedErrorFamily = "unclassified"
 			}
 		}
 		switch d.Stage {
@@ -53,6 +62,61 @@ func AuthoringRunDiagnostics(err error) AuthoringRunDiagnostic {
 		}
 	}
 	return AuthoringRunDiagnostic{Stage: "unknown"}
+}
+
+// classifyAuthoringErrorFamily scans bounded stderr without retaining any
+// fragments. Even a recognized token is only an untrusted process report.
+// Colons are token delimiters, not authenticated error-frame markers: arbitrary
+// text such as "label:EPERM" can report a family without proving an OS error.
+func classifyAuthoringErrorFamily(raw []byte, truncated bool) string {
+	if truncated || len(raw) == 0 || len(raw) > 16<<10 {
+		return "unclassified"
+	}
+	for _, value := range raw {
+		if (value < 0x20 && value != '\n' && value != '\r' && value != '\t') || value > 0x7e {
+			return "unclassified"
+		}
+	}
+	boundary := func(value byte) bool {
+		switch value {
+		case ' ', '\n', '\r', '\t', ':', ',', ';', '(', ')', '\'', '"':
+			return true
+		default:
+			return false
+		}
+	}
+	family := "unclassified"
+	for start := 0; start < len(raw); {
+		if boundary(raw[start]) {
+			start++
+			continue
+		}
+		end := start
+		for end < len(raw) && !boundary(raw[end]) {
+			end++
+		}
+		candidate := ""
+		switch string(raw[start:end]) {
+		case "EPERM", "EACCES":
+			candidate = "permission"
+		case "ENOENT", "ENOTDIR":
+			candidate = "path"
+		case "EROFS":
+			candidate = "read_only"
+		case "ENOSPC", "EDQUOT":
+			candidate = "storage"
+		case "EMFILE", "ENFILE", "ENOMEM", "EAGAIN":
+			candidate = "resource"
+		}
+		if candidate != "" {
+			if family != "unclassified" && family != candidate {
+				return "ambiguous"
+			}
+			family = candidate
+		}
+		start = end
+	}
+	return family
 }
 
 // classifyAuthoringStderr recognizes only conventional synthetic option-error
