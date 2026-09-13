@@ -65,7 +65,9 @@ func TestCompiledCleanStateReadinessRefusalsAndOfflineStacks(t *testing.T) {
 			}
 			if output, err := run("--help"); err != nil ||
 				!bytes.Contains(output, []byte("Delegate a Markdown ticket to a local, operator-controlled software factory.")) ||
-				!bytes.Contains(output, []byte("ticket")) {
+				!bytes.Contains(output, []byte("Ticket workflow:")) ||
+				!bytes.Contains(output, []byte("Draft, start, inspect, and control tickets")) ||
+				!bytes.Contains(output, []byte("Setup and diagnostics:")) {
 				t.Fatalf("help exit=%v output=%s", err, output)
 			}
 			versionOutput, err := run("version", "--json")
