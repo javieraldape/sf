@@ -2,7 +2,7 @@ name: ticket-entry
 
 on:
   push:
-    branches: [feat/ticket-entry-experience]
+    branches: [feat/ticket-entry-experience, 'fix/authoring-*']
   pull_request:
     paths:
       - internal/cli/**
