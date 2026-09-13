@@ -69,8 +69,10 @@ class RacePartitionTest(unittest.TestCase):
         self.assertLessEqual(expected, declared)
         for name in expected:
             self.assertEqual(workflow.count("selector='" + name + "'"), 1)
-        self.assertNotIn("PreparedIndexRecovery$/", workflow)
-        self.assertNotIn("CandidateFinalizationRecovery$/", workflow)
+        self.assertNotIn("TestRepositoryMaterializerPostbuildAmendmentPreparedIndexRecovery$/", workflow)
+        self.assertNotIn("TestPostbuildAmendmentCandidateFinalizationRecovery$/", workflow)
+        # The repair matrix was not split and must retain its subtest selector.
+        self.assertIn("TestPostbuildRepairCandidateFinalizationRecovery$/$selector", workflow)
 
     def test_compiled_node_uses_supported_bounded_homebrew_runtime(self):
         workflow = (Path(__file__).resolve().parent.parent /
