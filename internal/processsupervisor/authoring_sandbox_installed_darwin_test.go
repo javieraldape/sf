@@ -177,7 +177,7 @@ func TestInstalledClaudeAuthoringSandboxPreflight(t *testing.T) {
 			matched = strings.TrimSpace(string(output)) == "2.1.263 (Claude Code)"
 		} else {
 			matched = true
-			for _, flag := range []string{"--bare", "--tools", "--restricted", "--safe-mode", "--json-schema", "--no-session-persistence", "--strict-mcp-config", "--permission-mode", "--allowedTools", "--disallowedTools"} {
+			for _, flag := range []string{"--tools", "--restricted", "--safe-mode", "--json-schema", "--no-session-persistence", "--strict-mcp-config", "--permission-mode", "--allowedTools", "--disallowedTools"} {
 				matched = matched && strings.Contains(string(output), flag)
 			}
 		}

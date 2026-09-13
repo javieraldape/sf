@@ -72,7 +72,7 @@ func classifyAuthoringStderr(raw []byte, truncated bool) string {
 		}
 	}
 	line = strings.TrimPrefix(line, "error: ")
-	for _, option := range []string{"--print", "--output-format", "--json-schema", "--model", "--bare", "--restricted", "--safe-mode", "--no-session-persistence", "--permission-mode", "--tools", "--allowedTools", "--disallowedTools", "--strict-mcp-config", "--mcp-config", "--max-turns"} {
+	for _, option := range []string{"--print", "--output-format", "--json-schema", "--model", "--restricted", "--safe-mode", "--no-session-persistence", "--permission-mode", "--tools", "--allowedTools", "--disallowedTools", "--strict-mcp-config", "--mcp-config", "--max-turns"} {
 		if line == "unknown option '"+option+"'" {
 			return "unknown_option"
 		}

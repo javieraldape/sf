@@ -25,7 +25,7 @@ func authoringPurposeArgv(model, purpose string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	return []string{"--print", "--output-format", "json", "--json-schema", schema, "--model", model, "--bare", "--restricted", "--safe-mode", "--no-session-persistence", "--permission-mode", "dontAsk", "--tools", "", "--allowedTools", "", "--disallowedTools", "mcp__*", "--strict-mcp-config", "--mcp-config", `{"mcpServers":{}}`, "--max-turns", "3"}, nil
+	return []string{"--print", "--output-format", "json", "--json-schema", schema, "--model", model, "--restricted", "--safe-mode", "--no-session-persistence", "--permission-mode", "dontAsk", "--tools", "", "--allowedTools", "", "--disallowedTools", "mcp__*", "--strict-mcp-config", "--mcp-config", `{"mcpServers":{}}`, "--max-turns", "3"}, nil
 }
 
 func authoringStdin(input contracts.AuthoringInput) ([]byte, error) {

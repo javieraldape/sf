@@ -4,6 +4,16 @@ Status: implementation approved on 2026-09-12; initial work from main `f632e81` 
 
 ## Current verification checkpoint
 
+- Source review found an independent documented auth-mode incompatibility:
+  authoring combined `--bare` with subscription OAuth. Claude's
+  [headless reference](https://code.claude.com/docs/en/headless) states bare
+  mode excludes subscription login; its [CLI reference](https://code.claude.com/docs/en/cli-reference)
+  says safe mode retains authentication. The correction removes only bare,
+  retains restricted/safe mode, empty tools/MCP, private HOME/CWD and native
+  sandbox, and versions the policy digest to reject old launch bindings.
+  Exact-argv and stale-policy regressions cover both purposes. This does not
+  yet establish that the incompatibility was the sole observed exit cause.
+
 - Latest approved diagnostic attempt was used once from `c376985`: failure
   in 7.37s, exit 1, stdout absent, bounded stderr present, hint unclassified,
   one launch and valid drain proof. API-request count remains unknown.

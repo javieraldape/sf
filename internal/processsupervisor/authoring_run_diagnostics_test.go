@@ -46,20 +46,21 @@ func TestAuthoringPrelaunchDiagnosticsDoNotInventObservations(t *testing.T) {
 
 func TestAuthoringStderrHintIsConservativeAndAdvisory(t *testing.T) {
 	for _, test := range []struct{ raw, want string }{
-		{"error: unknown option '--bare'\n", "unknown_option"},
+		{"error: unknown option '--safe-mode'\n", "unknown_option"},
 		{"unknown option '--max-turns'", "unknown_option"},
 		{"error: option '--permission-mode <mode>' argument 'dontAsk' is invalid.", "invalid_option_value"},
 		{"option '--max-turns' argument 'three' is invalid.\n", "invalid_option_value"},
 		{"error: unknown option '--not-authored'", "unclassified"},
-		{"error: unknown option '--bare' secret-token", "unclassified"},
+		{"error: unknown option '--bare'", "unclassified"},
+		{"error: unknown option '--safe-mode' secret-token", "unclassified"},
 		{"error: option '--permission-mode <secret-label>' argument 'dontAsk' is invalid.", "unclassified"},
 		{"error: option '--permission-mode' argument 'dontAsk' is invalid. Allowed choices are secret-token.", "unclassified"},
 		{"secret-token", "unclassified"},
-		{"\x1b[31merror: unknown option '--bare'", "unclassified"},
-		{"error: unknown option '--bare'\r\n", "unclassified"},
-		{"error:\tunknown option '--bare'", "unclassified"},
-		{"error: unknown option '--bare'\nerror: unknown option '--model'", "unclassified"},
-		{"error: unknown option '--bare'\n\n", "unclassified"},
+		{"\x1b[31merror: unknown option '--safe-mode'", "unclassified"},
+		{"error: unknown option '--safe-mode'\r\n", "unclassified"},
+		{"error:\tunknown option '--safe-mode'", "unclassified"},
+		{"error: unknown option '--safe-mode'\nerror: unknown option '--model'", "unclassified"},
+		{"error: unknown option '--safe-mode'\n\n", "unclassified"},
 		{"é", "unclassified"},
 		{strings.Repeat("x", 513), "unclassified"},
 		{"", "unclassified"},
@@ -88,7 +89,7 @@ func TestAuthoringGatedFailureDiagnostics(t *testing.T) {
 		stdout, stderr, outCap, errCap bool
 	}{
 		{"nonzero", "printf secret-token >&2; exit 7", "process_exit", 7, false, true, false, false},
-		{"option hint", `printf '%s\n' "error: unknown option '--bare'" >&2; exit 1`, "process_exit", 1, false, true, false, false},
+		{"option hint", `printf '%s\n' "error: unknown option '--safe-mode'" >&2; exit 1`, "process_exit", 1, false, true, false, false},
 		{"malformed", "printf secret-token", "output_json", 0, true, false, false, false},
 		{"envelope", `printf '%s' '{"type":"result","subtype":"error","is_error":true}'`, "result_envelope", 0, true, false, false, false},
 		{"structured", `printf '%s' '{"type":"result","subtype":"success","is_error":false,"structured_output":{}}'`, "structured_output", 0, true, false, false, false},
