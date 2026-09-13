@@ -2,6 +2,18 @@
 
 ## Current truth
 
+- Five-priority readiness goal is active on `feat/readiness-five-priorities`,
+  draft PR16. Sol/Luna implementation integrated; GitHub-only validation is
+  still finding endpoint fixture/integration defects. No completion claim.
+  Stop-at-PR, CI timing artifacts and clean-state Go/Node journeys are under
+  validation; three complete candidate performance samples remain required.
+  Alexandria CI-only PR219 has six passing explicit pilot groups at18abef1,
+  but requires an eligible approving review before merge. Do not bypass it.
+  Four cross-vendor trial drafts exist only in ignored `.context/readiness-tickets`;
+  no new live trial ticket, daemon, DB or old paused ticket was changed.
+  Exact moving evidence: `.context/readiness-execution.md`. In-chat follow-up
+  `continue-sf-readiness-goal` continues every five minutes while the app runs.
+
 - REAL AUTHORING ACCEPTANCE PASSED on `cc55929652b1462c4e173497c63e63df3ac2216d`.
   GitHub `34749449916` PASS; normal push trigger resolved repeated dispatch
   HTTP500/502 failures. Exact manifest/checksums verified before execution.
