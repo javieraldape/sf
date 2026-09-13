@@ -28,6 +28,8 @@ jobs:
         run: go test -race -p 1 -count=1 ./internal/workflowruntime ./internal/codexprovider
       - name: Production worker configuration
         run: go test -p 1 -count=1 ./cmd/sf -run '^TestWorkflowWorkerCountIsBoundedAndOptIn$'
+      - name: Durable shared-account capacity boundary
+        run: go test -race -p 1 -count=1 ./internal/store -run '^TestProvider(ThreeCapacityRetainsFourthAdmissionExclusion|AdmissionUsesPairCapacityAndFreshFences)$'
       - name: Prove old scheduler starves its sibling
         run: |
           cp internal/workflowruntime/scheduler.go "$RUNNER_TEMP/scheduler-fixed.go"
