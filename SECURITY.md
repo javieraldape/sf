@@ -6,11 +6,13 @@ isolation than the documented profile provides.
 
 ## Report privately
 
-Use the repository's private security reporting channel or contact the
-maintainers directly. Do not open a public issue for an unpatched
-vulnerability. Include a minimal reproduction, affected version/commit,
-platform, and impact. Redact tokens, cookies, OAuth data, private paths,
-provider transcripts, and credential-bearing URLs before sending anything.
+If private vulnerability reporting is enabled for this repository, use its
+GitHub Security Advisories channel; otherwise contact the maintainers through
+the public contact listed by the repository owner. Do not open a public issue
+for an unpatched vulnerability. Include a minimal reproduction, affected
+version/commit, platform, and impact. Redact tokens, cookies, OAuth data,
+private paths, provider transcripts, and credential-bearing URLs before
+sending anything.
 
 Never attach `~/.config/gh`, provider home directories, database files,
 environment dumps, or raw logs. SF diagnostics must remain bounded and
@@ -23,4 +25,3 @@ operator's existing official login/keychain flow and must not be copied into
 GitHub, tickets, tests, fixtures, or repository configuration. Report any
 credential disclosure, unauthorized Git/GitHub mutation, qualification bypass,
 duplicate external effect, or lifecycle state that contradicts SQLite.
-

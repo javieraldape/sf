@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -87,6 +88,40 @@ func TestCompiledCleanStateReadinessRefusalsAndOfflineStacks(t *testing.T) {
 			if !fixture.accepted {
 				return
 			}
+			// Registration is the first mutating setup step; it must not imply
+			// provider qualification, daemon startup, or ticket submission.
+			if output, err := run("init", "--json"); err != nil || !bytes.Contains(output, []byte(`"ok":true`)) {
+				t.Fatalf("registration exit=%v output=%s", err, output)
+			}
+			draft := filepath.Join(repository, "offline-ticket.md")
+			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+			command := exec.CommandContext(ctx, "/usr/bin/script", "-q", "/dev/null", binary, "ticket", "new", "--no-ai", draft)
+			command.Dir, command.Env = repository, env
+			input, pipeErr := command.StdinPipe()
+			if pipeErr != nil {
+				cancel()
+				t.Fatal(pipeErr)
+			}
+			var transcript bytes.Buffer
+			command.Stdout, command.Stderr = &transcript, &transcript
+			if err := command.Start(); err != nil {
+				input.Close()
+				cancel()
+				t.Fatal(err)
+			}
+			_, writeErr := input.Write([]byte("Offline clean-state ticket\nExercise selection and view.\nThe baseline must remain green.\n\nyes\n"))
+			waitErr := command.Wait()
+			input.Close()
+			cancel()
+			if writeErr != nil || waitErr != nil {
+				t.Fatalf("offline draft exit=%v write=%v transcript=%s", waitErr, writeErr, transcript.String())
+			}
+			if _, err := os.Stat(draft); err != nil {
+				t.Fatalf("offline draft was not saved: %v", err)
+			}
+			if strings.Contains(transcript.String(), "seeded-clean-state-secret") {
+				t.Fatal("draft flow exposed seeded credential")
+			}
 			for _, command := range [][]string{{"factory", "status", "--json"}, {"auth", "status", "--json"}} {
 				output, err := run(command...)
 				if strings.Contains(string(output), "seeded-clean-state-secret") {
@@ -94,6 +129,25 @@ func TestCompiledCleanStateReadinessRefusalsAndOfflineStacks(t *testing.T) {
 				}
 				if command[0] == "factory" && (err == nil || !strings.Contains(string(output), "daemon_unavailable")) {
 					t.Fatalf("missing daemon was not actionable: %v %s", err, output)
+				}
+				if command[0] == "auth" {
+					var report struct {
+						Providers []struct {
+							Authenticated bool `json:"authenticated"`
+							NextAction    struct {
+								Argv []string `json:"argv"`
+							} `json:"next_action"`
+						} `json:"providers"`
+					}
+					var envelope api.Response
+					if json.Unmarshal(output, &envelope) != nil || !envelope.OK || json.Unmarshal(envelope.Data, &report) != nil {
+						t.Fatalf("auth status exit=%v output=%s", err, output)
+					}
+					for _, provider := range report.Providers {
+						if provider.Authenticated || len(provider.NextAction.Argv) == 0 {
+							t.Fatalf("clean auth unexpectedly ready: %+v", provider)
+						}
+					}
 				}
 			}
 		})
