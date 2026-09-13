@@ -964,6 +964,9 @@ func (s *Store) StartWithCheckedProjectOwnership(ctx context.Context, ref domain
 }
 
 func (s *Store) StartWithCheckedProjectOwnershipUntil(ctx context.Context, ref domain.TicketRef, expectedVersion uint64, fence domain.Fence, workflowID string, at time.Time, checked Project, endpoint string) (Ticket, bool, error) {
+	if checked.Channel != ref.Channel || checked.ID != ref.Project {
+		return Ticket{}, false, ErrStartConfigurationChanged
+	}
 	if endpoint != "" && endpoint != ExecutionEndpointPR {
 		return Ticket{}, false, ErrStartState
 	}
@@ -1036,7 +1039,9 @@ func (s *Store) startWithOwnership(ctx context.Context, ref domain.TicketRef, ex
 				return ErrStaleFence
 			}
 			var persisted string
-			_ = conn.QueryRowContext(ctx, `SELECT endpoint FROM ticket_execution_policies WHERE channel=? AND project_id=? AND ticket_id=?`, ref.Channel, ref.Project, ref.Ticket).Scan(&persisted)
+			if err := conn.QueryRowContext(ctx, `SELECT endpoint FROM ticket_execution_policies WHERE channel=? AND project_id=? AND ticket_id=?`, ref.Channel, ref.Project, ref.Ticket).Scan(&persisted); err != nil && !errors.Is(err, sql.ErrNoRows) {
+				return err
+			}
 			if persisted != endpoint {
 				return ErrStartState
 			}

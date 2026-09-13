@@ -1897,7 +1897,11 @@ func (s *Store) LoadPublishedCandidate(ctx context.Context, ref domain.TicketRef
 	if err := rejectFutureRunnerRecoveryRows(ctx, s.db, ref, ticket.Version); err != nil {
 		return PublishedCandidateEvidence{}, ErrPublicationEvidence
 	}
-	waitingReplay := ticket.State == domain.StateWaitingCI
+	endpointPaused, endpointErr := s.IsPREndpointPaused(ctx, ticket)
+	if endpointErr != nil {
+		return PublishedCandidateEvidence{}, ErrPublicationEvidence
+	}
+	waitingReplay := ticket.State == domain.StateWaitingCI || endpointPaused
 	// A pending CI observation is a real, authenticated same-state transition.
 	// The generic publication reader predates that chain and deliberately
 	// rejects additional events at the publication->waiting_ci version.  Prefer
@@ -1935,8 +1939,12 @@ func (s *Store) LoadPublishedCandidate(ctx context.Context, ref domain.TicketRef
 		if value.CurrentTicketVersion == ^uint64(0) || ticket.Version < waitingVersion || ticket.RunnerEpoch < value.CurrentFence.RunnerEpoch {
 			return PublishedCandidateEvidence{}, ErrPublicationEvidence
 		}
-		if ticket.Version == waitingVersion {
+		if endpointPaused && ticket.Version == waitingVersion+1 && ticket.RunnerEpoch == value.CurrentFence.RunnerEpoch {
+			semanticWaitingReplay = true
+		} else if ticket.Version == waitingVersion {
 			// Ordinary publishing -> waiting_ci replay.
+		} else if ticket.Version == waitingVersion+2 && authenticatePREndpointResume(ctx, s.db, ref, ticket.Version) == nil {
+			semanticWaitingReplay = true
 		} else if ticket.Version == waitingVersion+2 && authenticateBlockedPublicationResume(ctx, s.db, ref, waitingVersion+1, ticket.Version, domain.StateWaitingCI, domain.StateWaitingCI) == nil {
 			blockedWaitingReplay = true
 		} else if ticket.Version == waitingVersion+2 && authenticateSemanticPublicationResume(ctx, s.db, ref, waitingVersion+1, ticket.Version, domain.StateWaitingCI) == nil {
