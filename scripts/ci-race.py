@@ -9,10 +9,15 @@ Crash shards preserve the reference Makefile's exact top-level selection.
 """
 
 import argparse
+from collections import deque
+import json
 import math
+import os
+from pathlib import Path
 import re
 import subprocess
 import sys
+import time
 
 STORE = "github.com/nysa-company/sf/internal/store"
 RUNTIME = "github.com/nysa-company/sf/internal/workflowruntime"
@@ -33,7 +38,7 @@ PACKAGE_SECONDS = {
         "internal/mergeproof": 12,
     }.items()
 }
-RUNTIME_SECONDS = {
+RUNTIME_RACE_SECONDS = {
     "TestPostbuildAmendmentCandidateFinalizationRecovery": 564,
     "TestRepositoryMaterializerPostbuildAmendmentPreparedIndexRecovery": 542,
     "TestPostbuildRepairCandidateFinalizationRecovery": 291,
@@ -43,6 +48,43 @@ RUNTIME_SECONDS = {
     "TestRepositoryMaterializerRealSourceResumePreparedObservationLoss": 68,
     "TestRepositoryMaterializerRealStoreGitReplay": 43,
 }
+# Scheduling hints are intentionally scoped by execution mode: race, ordinary
+# integration and crash instrumentation have measurably different costs. These
+# reviewed values came from hosted macOS run 34771148550. Unknown/new tests use
+# the conservative default below and remain in the live inventory.
+STORE_RACE_SECONDS = {
+    "TestCIV41CompositeForeignKeyTamperingRejectsOpenAndReadOnly": 274,
+    "TestPostbuildRepairCandidateHandoffAndRecovery": 92,
+    "TestPublicationEvidenceLifecycleReplayRecoveryAndBackup": 85,
+    "TestPostbuildPendingAmendmentTwoRecoveriesAndDecision": 80,
+    "TestFenceRecoveredRunnersAcceptsRepeatedArmedPostPublicationCrashes": 77,
+    "TestRepositoryCommandResultAuthenticatedHistoricalLoadAndTampering": 60,
+    "TestFenceRecoveredRunnersAcceptsArmedPostPublicationRearm": 57,
+    "TestProtectedBaseRefreshReviewedRecoveryRejectsTamperedHistory": 53,
+    "TestRunnerRecoveryAuthorityAuthenticatesControlGaps": 48,
+    "TestProtectedBaseRefreshReservationPreservesCompletedCIRepairParent": 45,
+    "TestAuthenticatePostbuildFailureRefusals": 44,
+    "TestBeginProviderAttemptRejectsInvalidDirectLaunchInput": 41,
+    "TestControlProofFencesEveryStoreAdmissionAtLinearization": 38,
+    "TestCandidateRepairCurrentReadersAndRearmRejectBrokenRecoveryPrefix": 37,
+    "TestCurrentAttestedProviderPairChecksEveryRoleAndRestart": 36,
+    "TestSeededLeaseAdmissionStress": 34,
+    "TestProviderRetryWaitingApprovalRearmDecisionAndMergingRestarts": 33,
+}
+RUNTIME_INTEGRATION_SECONDS = {
+    name: max(1, seconds / 3) for name, seconds in RUNTIME_RACE_SECONDS.items()
+}
+CRASH_RUNTIME_SECONDS = {
+    "TestPostbuildAmendmentCandidateFinalizationRecovery": 540,
+    "TestPostbuildRepairCandidateFinalizationRecovery": 260,
+}
+MODE_WEIGHTS = {
+    "store": STORE_RACE_SECONDS,
+    "runtime-race": RUNTIME_RACE_SECONDS,
+    "runtime-integration": RUNTIME_INTEGRATION_SECONDS,
+    "crash-runtime": CRASH_RUNTIME_SECONDS,
+}
+MAX_OUTPUT_BYTES = 1024 * 1024
 
 
 def race_packages(packages, mode):
@@ -100,22 +142,73 @@ def inventory(output):
     return names
 
 
+def write_artifact(directory, mode, index, count, names, selected, exit_code=None,
+                   elapsed=None, timings=None, output_tail=""):
+    """Write one bounded, machine-readable shard record without affecting truth."""
+    if not directory:
+        return
+    path = Path(directory)
+    path.mkdir(parents=True, exist_ok=True)
+    record = {
+        "schema": 1, "mode": mode, "shard": index, "shard_count": count,
+        "inventory": sorted(names), "selected": sorted(selected),
+        "exit_code": exit_code, "elapsed_seconds": elapsed,
+        "test_timings": timings or {}, "output_tail": output_tail[-MAX_OUTPUT_BYTES:],
+    }
+    (path / f"{mode}-{index}.json").write_text(
+        json.dumps(record, indent=2, sort_keys=True) + "\n")
+
+
+def run_recorded(command, directory, mode, index, count, names, selected):
+    if not directory:
+        return subprocess.call(command)
+    started = time.monotonic()
+    output = deque()
+    output_bytes = 0
+    timings = {}
+    # -v output stays human-readable in the Actions log and is also parsed into
+    # scheduling evidence. The bounded artifact retains the tail on failures.
+    process = subprocess.Popen(command, stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT, text=True)
+    assert process.stdout is not None
+    try:
+        for line in process.stdout:
+            print(line, end="", flush=True)
+            output.append(line)
+            output_bytes += len(line.encode("utf-8", errors="replace"))
+            while output and output_bytes > MAX_OUTPUT_BYTES:
+                output_bytes -= len(output.popleft().encode("utf-8", errors="replace"))
+            match = re.match(r"--- (?:PASS|FAIL|SKIP): (\S+) \(([0-9.]+)s\)", line.strip())
+            if match and "/" not in match.group(1):
+                timings[match.group(1)] = float(match.group(2))
+        exit_code = process.wait()
+    finally:
+        elapsed = time.monotonic() - started
+        write_artifact(directory, mode, index, count, names, selected,
+                       process.poll(), elapsed, timings, "".join(output))
+    return exit_code
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("mode", choices=["other", "runtime-race", "store", "runtime-integration", "crash-other", "crash-runtime"])
     parser.add_argument("--index", type=int, default=0)
     parser.add_argument("--count", type=int, default=1)
     parser.add_argument("--list-only", action="store_true")
+    parser.add_argument("--artifact-dir", default=os.environ.get("SF_CI_ARTIFACT_DIR", ""))
     args = parser.parse_args()
     if args.mode in ("other", "crash-other"):
         packages = subprocess.check_output(["go", "list", "./..."], text=True).splitlines()
         selected = race_packages(packages, "other")
         if args.mode == "other":
-            selected = balanced_partition(selected, args.index, args.count, PACKAGE_SECONDS)
-            command = ["go", "test", *FLAGS, *selected]
+            names = selected
+            selected = balanced_partition(names, args.index, args.count, PACKAGE_SECONDS)
+            command = ["go", "test", *FLAGS, "-v", *selected]
         else:
-            selected = [p for p in packages if p != RUNTIME]
-            command = ["go", "test", *INTEGRATION_FLAGS, *selected, "-run", CRASH_PATTERN]
+            names = [p for p in packages if p != RUNTIME]
+            selected = names
+            command = ["go", "test", *INTEGRATION_FLAGS, "-v", *selected,
+                       "-run", CRASH_PATTERN]
         print(f"{args.mode} shard {args.index + 1}/{args.count}: " + ", ".join(selected), flush=True)
     else:
         package = STORE if args.mode == "store" else RUNTIME
@@ -128,15 +221,19 @@ def main():
         names = inventory(output)
         if args.mode == "crash-runtime":
             names = [n for n in names if re.search(CRASH_PATTERN, n)]
-        selected = (partition(names, args.index, args.count) if args.mode == "store"
-                    else balanced_partition(names, args.index, args.count, RUNTIME_SECONDS))
+        selected = balanced_partition(names, args.index, args.count, MODE_WEIGHTS[args.mode])
         print(f"{package} shard {args.index + 1}/{args.count}: {len(selected)}/{len(names)} tests", flush=True)
         command = ["go", "test", *flags, "-v", package,
                    "-run", "^(?:" + "|".join(re.escape(n) for n in selected) + ")$"]
     if args.list_only:
+        write_artifact(args.artifact_dir, args.mode, args.index, args.count,
+                       names, selected)
         print("\n".join(selected))
         return 0
-    return subprocess.call(command)
+    write_artifact(args.artifact_dir, args.mode, args.index, args.count,
+                   names, selected)
+    return run_recorded(command, args.artifact_dir, args.mode, args.index,
+                        args.count, names, selected)
 
 
 if __name__ == "__main__":

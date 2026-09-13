@@ -9,6 +9,12 @@ on:
 permissions:
   contents: read
 
+# Only a newer run for the same pull request supersedes work. Main, release and
+# manually dispatched evidence is never cancelled by an unrelated ref/run.
+concurrency:
+  group: repository-baseline-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   acceptance:
     name: SF acceptance
@@ -94,7 +100,21 @@ jobs:
         env:
           SHARD: ${{ matrix.shard }}
           SF_CI_LANE: store-race
+          SF_CI_ARTIFACT_DIR: .ci-timings
         run: make test-all
+      - name: Preserve early failure or cancellation outcome
+        if: ${{ always() }}
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          mkdir -p .ci-timings
+          printf '{"schema":1,"mode":"store","outcome":"%s"}\n' "$JOB_STATUS" > .ci-timings/store-${{ matrix.shard }}-outcome.json
+      - if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-timing-store-race-${{ matrix.shard }}
+          path: .ci-timings
+          if-no-files-found: warn
 
   balanced:
     # Measured bottlenecks in run 34416329428: runtime race 48m, other race
@@ -129,7 +149,21 @@ jobs:
         env:
           SHARD: ${{ matrix.shard }}
           SF_CI_LANE: ${{ matrix.lane }}
+          SF_CI_ARTIFACT_DIR: .ci-timings
         run: make test-all
+      - name: Preserve early failure or cancellation outcome
+        if: ${{ always() }}
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          mkdir -p .ci-timings
+          printf '{"schema":1,"mode":"%s","outcome":"%s"}\n' "${{ matrix.lane }}" "$JOB_STATUS" > .ci-timings/${{ matrix.lane }}-${{ matrix.shard }}-outcome.json
+      - if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-timing-${{ matrix.lane }}-${{ matrix.shard }}
+          path: .ci-timings
+          if-no-files-found: warn
 
   runtime-integration:
     # Complete normal integration inventory, including examples/fuzz seeds.
@@ -163,4 +197,18 @@ jobs:
         env:
           SHARD: ${{ matrix.shard }}
           SF_CI_LANE: runtime-integration
+          SF_CI_ARTIFACT_DIR: .ci-timings
         run: make test-all
+      - name: Preserve early failure or cancellation outcome
+        if: ${{ always() }}
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          mkdir -p .ci-timings
+          printf '{"schema":1,"mode":"runtime-integration","outcome":"%s"}\n' "$JOB_STATUS" > .ci-timings/runtime-integration-${{ matrix.shard }}-outcome.json
+      - if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-timing-runtime-integration-${{ matrix.shard }}
+          path: .ci-timings
+          if-no-files-found: warn

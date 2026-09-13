@@ -36,6 +36,9 @@ class RacePartitionTest(unittest.TestCase):
         other = re.search(r"\ntest-integration-other:\n\t([^\n]+)", makefile).group(1).split()
         self.assertEqual([part for part in reference if part != "./internal/workflowruntime"], other)
         self.assertNotIn("continue-on-error", workflow)
+        self.assertIn("github.event.pull_request.number || github.run_id", workflow)
+        self.assertIn("cancel-in-progress: ${{ github.event_name == 'pull_request' }}", workflow)
+        self.assertEqual(workflow.count("uses: actions/upload-artifact@v4"), 3)
 
     def test_required_acceptance_gate_is_fail_closed(self):
         workflow = (Path(__file__).resolve().parent.parent /
@@ -94,6 +97,16 @@ class RacePartitionTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 ci.balanced_partition(names, 0, 3, {"heavy": weight})
 
+    def test_each_test_mode_has_independent_scheduling_hints(self):
+        self.assertEqual(set(ci.MODE_WEIGHTS), {"store", "runtime-race",
+                                                "runtime-integration", "crash-runtime"})
+        self.assertIsNot(ci.MODE_WEIGHTS["runtime-race"],
+                         ci.MODE_WEIGHTS["runtime-integration"])
+        names = ["known", "new-a", "new-b"]
+        for weights in ci.MODE_WEIGHTS.values():
+            shards = [ci.balanced_partition(names, i, 2, weights) for i in range(2)]
+            self.assertEqual(sorted(sum(shards, [])), sorted(names))
+
     def test_inventory_keeps_examples_and_fuzz_seeds(self):
         self.assertEqual(ci.inventory("TestA\nExampleB\nFuzzC\nBenchmarkD\nok  \tpackage 1s\n"),
                          ["TestA", "ExampleB", "FuzzC"])
@@ -132,7 +145,7 @@ class RacePartitionTest(unittest.TestCase):
                  patch.object(ci.subprocess, "check_output", return_value="\n".join(packages)), \
                  patch.object(ci.subprocess, "call", return_value=1) as run:
                 self.assertEqual(ci.main(), 1)
-                commands.extend(run.call_args.args[0][2 + len(ci.FLAGS):])
+                commands.extend(run.call_args.args[0][3 + len(ci.FLAGS):])
         self.assertEqual(sorted(commands), ["first", "fourth", "last", "new"])
 
     def test_crash_partition_keeps_exact_original_selection(self):
@@ -157,7 +170,7 @@ class RacePartitionTest(unittest.TestCase):
              patch.object(ci.subprocess, "call", return_value=1) as run:
             self.assertEqual(ci.main(), 1)
             self.assertEqual(run.call_args.args[0], ["go", "test", *ci.INTEGRATION_FLAGS,
-                                                   "first", ci.STORE, "-run", ci.CRASH_PATTERN])
+                                                   "-v", "first", ci.STORE, "-run", ci.CRASH_PATTERN])
 
     def test_race_package_lanes_are_complete_and_disjoint(self):
         packages = ["first", ci.STORE, ci.RUNTIME, "last"]
