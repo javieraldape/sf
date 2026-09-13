@@ -10,7 +10,7 @@ import (
 )
 
 func TestAuthoringLimitedBufferCopyPathsPreserveBoundAndDrain(t *testing.T) {
-	for _, path := range []string{"ReadFrom", "reader-only", "WriterTo", "pipe"} {
+	for _, path := range []string{"ReadFrom", "reader-only", "WriterTo", "WriteString", "pipe"} {
 		for _, limit := range []int{0, 8, 16} {
 			t.Run(path+"/"+strconv.Itoa(limit), func(t *testing.T) {
 				const input = "0123456789abcdef"
@@ -24,6 +24,10 @@ func TestAuthoringLimitedBufferCopyPathsPreserveBoundAndDrain(t *testing.T) {
 					n, err = io.Copy(&capture, struct{ io.Reader }{strings.NewReader(input)})
 				case "WriterTo":
 					n, err = io.Copy(&capture, strings.NewReader(input))
+				case "WriteString":
+					var written int
+					written, err = io.WriteString(&capture, input)
+					n = int64(written)
 				case "pipe":
 					reader, writer, pipeErr := os.Pipe()
 					if pipeErr != nil {
@@ -53,6 +57,34 @@ func TestAuthoringLimitedBufferCopyPathsPreserveBoundAndDrain(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestAuthoringLimitedBufferExposesOnlyBoundedWriteMethods(t *testing.T) {
+	var capture any = &limitedBuffer{}
+	if _, ok := capture.(io.StringWriter); ok {
+		t.Fatal("uncapped StringWriter exposed")
+	}
+	if _, ok := capture.(io.ByteWriter); ok {
+		t.Fatal("uncapped ByteWriter exposed")
+	}
+	if _, ok := capture.(interface{ WriteRune(rune) (int, error) }); ok {
+		t.Fatal("uncapped WriteRune exposed")
+	}
+	if _, ok := capture.(io.Reader); ok {
+		t.Fatal("mutating Reader exposed")
+	}
+	if _, ok := capture.(io.ByteReader); ok {
+		t.Fatal("mutating ByteReader exposed")
+	}
+	if _, ok := capture.(io.RuneReader); ok {
+		t.Fatal("mutating RuneReader exposed")
+	}
+	if _, ok := capture.(io.WriterTo); ok {
+		t.Fatal("mutating WriterTo exposed")
+	}
+	if _, ok := capture.(interface{ Reset() }); ok {
+		t.Fatal("capture reset exposed")
 	}
 }
 
