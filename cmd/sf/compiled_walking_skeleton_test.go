@@ -46,6 +46,13 @@ func TestCompiledDevPREndpointWalkingSkeleton(t *testing.T) {
 	compiledDevWalkingSkeleton(t, domain.MergeGuarded)
 }
 
+func TestCompiledDevNodePREndpointWalkingSkeleton(t *testing.T) {
+	t.Setenv("SF_TEST_UNTIL_PR", "1")
+	t.Setenv("SF_TEST_NODE_FIXTURE", "1")
+	t.Setenv("SF_FAKE_PROVIDER_NODE_FIXTURE", "1")
+	compiledDevWalkingSkeleton(t, domain.MergeGuarded)
+}
+
 func compiledDevWalkingSkeleton(t *testing.T, mergeMode domain.MergeMode) {
 	compiledDevWalkingSkeletonProfile(t, mergeMode, false)
 }
@@ -250,6 +257,23 @@ func compiledDevWalkingSkeletonConfigured(t *testing.T, mergeMode domain.MergeMo
 		t.Fatal(err)
 	}
 	repository, bare, base := compiledWalkingSkeletonRepository(t, bareRoot)
+	if os.Getenv("SF_TEST_NODE_FIXTURE") == "1" {
+		if err := os.Remove(filepath.Join(repository, "go.mod")); err != nil {
+			t.Fatal(err)
+		}
+		for name, content := range map[string]string{
+			"package.json":  `{"name":"sf-node-fixture","private":true,"type":"module"}`,
+			"smoke.test.js": "import test from 'node:test'; test('baseline', () => {});\n",
+		} {
+			if err := os.WriteFile(filepath.Join(repository, name), []byte(content), 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		walkingSkeletonGit(t, repository, "add", ".")
+		walkingSkeletonGit(t, repository, "commit", "-m", "Node fixture baseline")
+		walkingSkeletonGit(t, repository, "push", bare, "main")
+		base = walkingSkeletonGitOutput(t, repository, "rev-parse", "HEAD")
+	}
 	if python {
 		// Only this newly created disposable fixture is changed.
 		if err := os.Remove(filepath.Join(repository, "go.mod")); err != nil {
@@ -414,6 +438,9 @@ func compiledDevWalkingSkeletonConfigured(t *testing.T, mergeMode domain.MergeMo
 	}
 	if live {
 		ticketSource = "---\ntype: feature\nmerge: guarded\nmax_duration: 20m\nmax_cost_usd: 10\n---\n# Add integer addition\n\nIn this empty dependency-free Go module, create package app with exported function Add(a, b int) int in add.go. Keep scope to add.go and add_test.go. The independent Reviewer authors add_test.go before Builder writes add.go. Use go test ./... as the verification command; SF runs the command itself. Do not commit or change configuration.\n\n## Acceptance\n- Add(2,3) equals 5.\n- Add(-2,2) equals 0.\n- Add(0,0) equals 0.\n"
+	}
+	if os.Getenv("SF_TEST_NODE_FIXTURE") == "1" {
+		ticketSource = "---\ntype: feature\nmerge: guarded\nmax_duration: 20m\n---\n# Complete the Node fixture\n\nIn this dependency-free Node project, export softwareFactoryFixture from sf_fixture.js returning ready. The independent Reviewer authors sf_fixture.test.js before Builder writes sf_fixture.js. Use node --test as the verification command; SF runs the command itself.\n\n## Acceptance\n- The Node test passes after the implementation is written.\n"
 	}
 	reviewRepairFixture := os.Getenv("SF_TEST_REVIEW_REPAIR_FIXTURE") == "1"
 	if reviewRepairFixture {
