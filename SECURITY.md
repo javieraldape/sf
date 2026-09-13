@@ -6,9 +6,8 @@ isolation than the documented profile provides.
 
 ## Report privately
 
-If private vulnerability reporting is enabled for this repository, use its
-GitHub Security Advisories channel; otherwise contact the maintainers through
-the public contact listed by the repository owner. Do not open a public issue
+Use [GitHub private vulnerability reporting](https://github.com/nysa-company/sf/security/advisories/new),
+which is enabled for this repository. Do not open a public issue
 for an unpatched vulnerability. Include a minimal reproduction, affected
 version/commit, platform, and impact. Redact tokens, cookies, OAuth data,
 private paths, provider transcripts, and credential-bearing URLs before
