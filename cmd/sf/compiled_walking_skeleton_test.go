@@ -492,6 +492,10 @@ func compiledDevWalkingSkeletonConfigured(t *testing.T, mergeMode domain.MergeMo
 		startDaemon()
 		daemonStopped = false
 		compiledWalkingSkeletonWaitSocket(t, paths.Socket, daemonDone, &daemonOutput, &daemonStopped)
+		// Qualification and runtime composition are bound to the daemon leader.
+		// Requalify through the public CLI before testing explicit continuation;
+		// the stored PR endpoint must remain paused even with a runnable scheduler.
+		compiledWalkingSkeletonCLI(t, binary, home, qualificationArgs...)
 		status := compiledWalkingSkeletonCLI(t, binary, home, "status", string(ref.Ticket), "--json")
 		if !strings.Contains(string(status), `"state":"paused"`) || !strings.Contains(string(status), `"blocked_code":"pr_opened"`) || !strings.Contains(string(status), "continue_after_pr") {
 			t.Fatalf("restarted PR endpoint status=%s", status)
