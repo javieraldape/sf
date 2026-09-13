@@ -104,7 +104,7 @@ test-compiled: test-compiled-e2e
 test-all:
 	@case "$${SF_CI_LANE:-}" in \
 	  '') python3 scripts/run-bounded --timeout 120m -- $(MAKE) --no-print-directory -j1 test-race test-integration test-crash test-security test-upgrade test-compiled-e2e verify-static ;; \
-	  race-other) python3 scripts/run-bounded --timeout 65m -- python3 scripts/ci-race.py other --index "$$SHARD" --count 4 ;; \
+	  race-other) python3 scripts/run-bounded --timeout 65m -- python3 scripts/ci-race.py other --index "$$SHARD" --count 5 ;; \
 	  runtime-race) python3 scripts/run-bounded --timeout 65m -- python3 scripts/ci-race.py runtime-race --index "$$SHARD" --count 4 ;; \
 	  crash-runtime) python3 scripts/run-bounded --timeout 40m -- python3 scripts/ci-race.py crash-runtime --index "$$SHARD" --count 4 ;; \
 	  crash-other) python3 scripts/run-bounded --timeout 40m -- python3 scripts/ci-race.py crash-other ;; \

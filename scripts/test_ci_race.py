@@ -31,10 +31,26 @@ class RacePartitionTest(unittest.TestCase):
         balanced = workflow.split("  balanced:\n", 1)[1].split("  runtime-integration:\n", 1)[0]
         self.assertIn("lane: [race-other, runtime-race, crash-runtime]", balanced)
         self.assertIn("shard: [0, 1, 2, 3]", balanced)
+        self.assertIn("include:\n          - lane: race-other\n            shard: 4", balanced)
+        lanes = re.search(r"lane: \[([^]]+)\]", balanced).group(1).split(", ")
+        balanced_shards = [int(value) for value in
+                           re.search(r"shard: \[([^]]+)\]", balanced).group(1).split(", ")]
+        jobs = {(lane, shard) for lane, shard in itertools.product(lanes, balanced_shards)}
+        included = [(lane, int(shard)) for lane, shard in
+                    re.findall(r"- lane: ([a-z-]+)\n\s+shard: (\d+)", balanced)]
+        self.assertEqual(included, [("race-other", 4)])
+        self.assertNotIn("exclude:", balanced)
+        jobs.update(included)
+        expected_jobs = ({("race-other", shard) for shard in range(5)} |
+                         {(lane, shard) for lane in ("runtime-race", "crash-runtime")
+                          for shard in range(4)})
+        self.assertEqual(jobs, expected_jobs)
+        self.assertEqual(len(jobs), 13)
         makefile = (root / "Makefile").read_text()
         self.assertIn('runtime-race) python3 scripts/run-bounded --timeout 65m -- python3 scripts/ci-race.py runtime-race', makefile)
         self.assertIn('runtime-integration --index "$$SHARD" --count 4', makefile)
-        for mode in ("other", "runtime-race", "crash-runtime"):
+        self.assertIn('other --index "$$SHARD" --count 5', makefile)
+        for mode in ("runtime-race", "crash-runtime"):
             self.assertIn(f'{mode} --index "$$SHARD" --count 4', makefile)
         reference = re.search(r"\ntest-integration:\n\t([^\n]+)", makefile).group(1).split()
         other = re.search(r"\ntest-integration-other:\n\t([^\n]+)", makefile).group(1).split()
