@@ -447,9 +447,16 @@ func TestPREndpointSurvivesPausedLeadersAndPostResumeRecovery(t *testing.T) {
 	if _, _, err := db.ResumePREndpoint(ctx, ticket.Ref, paused.Version, fence); !errors.Is(err, ErrStaleFence) {
 		t.Fatalf("stale publication leader consumed endpoint: %v", err)
 	}
-	resumed, _, err := db.ResumePREndpoint(ctx, ticket.Ref, paused.Version, domain.Fence{LeaderEpoch: leader, RunnerEpoch: paused.RunnerEpoch})
+	if consumed, err := db.PREndpointConsumed(ctx, ticket.Ref); err != nil || consumed {
+		t.Fatalf("unconsumed endpoint reported consumed=%v err=%v", consumed, err)
+	}
+	resumeFence := domain.Fence{LeaderEpoch: leader, RunnerEpoch: paused.RunnerEpoch}
+	resumed, _, err := db.ResumePREndpoint(ctx, ticket.Ref, paused.Version, resumeFence)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if consumed, err := db.PREndpointConsumed(ctx, ticket.Ref); err != nil || !consumed {
+		t.Fatalf("authenticated endpoint reported consumed=%v err=%v", consumed, err)
 	}
 	if _, err := db.LoadPublishedCandidate(ctx, ticket.Ref); err != nil {
 		t.Fatalf("post-resume publication: %v", err)
@@ -492,6 +499,46 @@ func TestPREndpointSurvivesPausedLeadersAndPostResumeRecovery(t *testing.T) {
 			}
 		})
 	}
+	for name, statement := range map[string]string{
+		"wrong witness": `UPDATE ticket_endpoint_consumptions SET publication_witness_digest='sha256:0000000000000000000000000000000000000000000000000000000000000000' WHERE channel=? AND project_id=? AND ticket_id=? AND endpoint='pr'`,
+		"wrong payload": `UPDATE events SET payload='{}' WHERE channel=? AND project_id=? AND ticket_id=? AND ticket_version=? AND trigger='operator_resume'`,
+	} {
+		t.Run("resume observation "+name, func(t *testing.T) {
+			root := t.TempDir()
+			if err := os.Chmod(root, 0700); err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(root, "endpoint-resume-tamper.sqlite")
+			if err := db.Backup(ctx, path); err != nil {
+				t.Fatal(err)
+			}
+			mutant, err := Open(ctx, path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer mutant.Close()
+			if name == "wrong witness" {
+				if _, err := mutant.db.ExecContext(ctx, `DROP TRIGGER ticket_endpoint_consumptions_immutable_update`); err != nil {
+					t.Fatal(err)
+				}
+			}
+			arguments := []any{ticket.Ref.Channel, ticket.Ref.Project, ticket.Ref.Ticket}
+			if name == "wrong payload" {
+				arguments = append(arguments, resumed.Version)
+			}
+			if result, err := mutant.db.ExecContext(ctx, statement, arguments...); err != nil {
+				t.Fatal(err)
+			} else if changed, _ := result.RowsAffected(); changed != 1 {
+				t.Fatalf("tampered endpoint resume rows=%d", changed)
+			}
+			if consumed, err := mutant.PREndpointConsumed(ctx, ticket.Ref); err == nil || consumed {
+				t.Fatalf("tampered endpoint reported consumed=%v err=%v", consumed, err)
+			}
+			if _, observed, err := mutant.ResumePREndpoint(ctx, ticket.Ref, paused.Version, resumeFence); err == nil || observed {
+				t.Fatalf("tampered endpoint replay observed=%v err=%v", observed, err)
+			}
+		})
+	}
 	nextLeader, err := db.AcquireLeader(ctx, domain.ChannelDev, "endpoint-resumed")
 	if err != nil {
 		t.Fatal(err)
@@ -504,6 +551,9 @@ func TestPREndpointSurvivesPausedLeadersAndPostResumeRecovery(t *testing.T) {
 	}
 	if _, err := loadCICurrentPublication(ctx, db.db, ticket.Ref); err != nil {
 		t.Fatalf("post-recovery CI publication: %v (resumed=%+v)", err, resumed)
+	}
+	if consumed, err := db.PREndpointConsumed(ctx, ticket.Ref); err != nil || !consumed {
+		t.Fatalf("post-recovery endpoint reported consumed=%v err=%v", consumed, err)
 	}
 }
 

@@ -85,9 +85,18 @@ func authenticatePREndpoint(ctx context.Context, q interface {
 }
 
 func (s *Store) PREndpointConsumed(ctx context.Context, ref domain.TicketRef) (bool, error) {
-	var count int
-	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM ticket_endpoint_consumptions WHERE channel=? AND project_id=? AND ticket_id=? AND endpoint='pr'`, ref.Channel, ref.Project, ref.Ticket).Scan(&count)
-	return count == 1, err
+	var consumedVersion uint64
+	err := s.db.QueryRowContext(ctx, `SELECT consumed_ticket_version FROM ticket_endpoint_consumptions WHERE channel=? AND project_id=? AND ticket_id=? AND endpoint='pr'`, ref.Channel, ref.Project, ref.Ticket).Scan(&consumedVersion)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if err := authenticatePREndpointResume(ctx, s.db, ref, consumedVersion); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func authenticatePREndpointResume(ctx context.Context, q interface {
@@ -163,6 +172,13 @@ func (s *Store) ResumePREndpoint(ctx context.Context, ref domain.TicketRef, expe
 			}
 			var count int
 			if err := conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM ticket_endpoint_consumptions WHERE channel=? AND project_id=? AND ticket_id=? AND endpoint='pr' AND paused_ticket_version=? AND consumed_ticket_version=?`, ref.Channel, ref.Project, ref.Ticket, expected, version).Scan(&count); err != nil || count != 1 {
+				return ErrPublicationEvidence
+			}
+			if err := authenticatePREndpointResume(ctx, conn, ref, version); err != nil {
+				return err
+			}
+			consumptionFence, err := prEndpointResumeFence(ctx, conn, ref, version)
+			if err != nil || consumptionFence != fence {
 				return ErrPublicationEvidence
 			}
 			observed = true
