@@ -112,6 +112,25 @@ different repository root. `--check` does not execute tests, contact providers
 or GitHub, or prove full runtime readiness; those checks remain separate.
 It currently previews existing configuration, not `--profile`/`--test` setup.
 
+To inspect or disconnect registrations later, use the project maintenance
+commands:
+
+```sh
+sf project list
+sf project list --all
+sf project remove my-app --dry-run
+sf project remove my-app --yes
+```
+
+Removal is reversible and keeps the repository, `.sf/config.toml`, dirty
+worktrees, ticket/configuration history, and GitHub pull requests. It is
+refused while any ticket is unfinished or any process, lease, or external
+effect is unresolved; SF does not cancel tickets as part of removal. Re-run
+`sf init` after the work is settled to validate and reactivate the same
+registration. In a terminal, omitting the project opens a picker; scripts must
+name it exactly and pass `--yes`. Use `--dry-run` to preview without changing
+state.
+
 For the narrow TypeScript recipe, use explicit setup instead of plain init:
 
 ```sh
@@ -177,6 +196,20 @@ From the repository root, `sf doctor --repo .` also previews the local
 configuration/test recipe. A failed `repository_recipe` check points back to
 `sf init --check`; it does not modify your configuration. The report labels
 its scope so a green host/provider verdict is not mistaken for launch approval.
+
+If the report identifies a repairable SF-owned directory or permission fault,
+preview it first:
+
+```sh
+sf doctor fix --dry-run --repo .
+sf doctor fix --repo .
+```
+
+The terminal form confirms before changing anything; automation must add
+`--yes`. Doctor fixes only authenticated SF-owned directory setup and
+permissions. It never installs software, logs in, calls providers, restarts or
+kills a daemon/process, changes Git, or bypasses a security check. Unsupported
+issues remain guided actions; rerun `sf doctor --repo .` after a repair.
 
 Use a disposable supported project for your first run. Keep your real project
 credentials out of ticket text. Do not change branch protection to bypass a

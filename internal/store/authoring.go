@@ -41,6 +41,13 @@ func (s *Store) CreateAuthoringSession(ctx context.Context, session AuthoringSes
 	}
 	capability, _ := json.Marshal(session.Capability)
 	return s.write(ctx, func(conn *sql.Conn) error {
+		var active int
+		if err := conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM projects WHERE channel=? AND id=? AND lifecycle='active'`, session.Channel, session.Project).Scan(&active); err != nil {
+			return err
+		}
+		if active != 1 {
+			return ErrProjectRemoved
+		}
 		_, err := conn.ExecContext(ctx, `INSERT INTO authoring_sessions(channel,id,purpose,project_id,capability,auth_digest,context_digest,created_at) VALUES(?,?,?,?,?,?,?,?)`, session.Channel, session.ID, session.Purpose, session.Project, capability, session.Capability.AuthDigest, session.ContextDigest, time.Now().UTC().Format(time.RFC3339Nano))
 		return err
 	})
@@ -78,6 +85,13 @@ func (s *Store) ReserveAuthoringTurn(ctx context.Context, session AuthoringSessi
 		stored, err := authoringSessionRow(ctx, conn, session.Channel, session.ID)
 		if err != nil || stored != session {
 			return ErrAuthoring
+		}
+		var active int
+		if err := conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM projects WHERE channel=? AND id=? AND lifecycle='active'`, stored.Channel, stored.Project).Scan(&active); err != nil {
+			return err
+		}
+		if active != 1 {
+			return ErrProjectRemoved
 		}
 		var current uint64
 		if conn.QueryRowContext(ctx, `SELECT leader_epoch FROM daemon_instances WHERE channel=?`, session.Channel).Scan(&current) != nil || current != epoch {

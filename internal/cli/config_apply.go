@@ -176,6 +176,8 @@ func configApplyStoreOpenFailure(err error, binary string, help []string) api.Re
 
 func configApplyStoreFailure(err error, binary string, help []string) api.Response {
 	switch {
+	case errors.Is(err, store.ErrProjectRemoved):
+		return failure("project_removed", "project was removed from SF management; run init in the registered repository to reactivate it before applying configuration", []string{binary, "init", "--help"})
 	case errors.Is(err, store.ErrBusy):
 		return failure("store_busy", "local authority is busy", help)
 	case errors.Is(err, store.ErrProjectConflict):

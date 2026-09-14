@@ -1431,3 +1431,15 @@ var migrationV56 = []string{
 var migrationV57 = []string{
 	`ALTER TABLE git_mutation_leases ADD COLUMN observation_only INTEGER NOT NULL DEFAULT 0 CHECK(observation_only IN (0,1))`,
 }
+
+// v64 makes project removal a reversible registration lifecycle transition.
+// Historical tickets, configurations, worktrees, events, and publication
+// evidence remain referenced by the same project row.
+var migrationV64 = []string{
+	`ALTER TABLE projects ADD COLUMN lifecycle TEXT NOT NULL DEFAULT 'active' CHECK(lifecycle IN ('active','removed'))`,
+	`ALTER TABLE projects ADD COLUMN registration_generation INTEGER NOT NULL DEFAULT 1 CHECK(registration_generation > 0)`,
+	`ALTER TABLE projects ADD COLUMN removed_at TEXT NOT NULL DEFAULT ''`,
+	`CREATE TRIGGER projects_lifecycle_shape_insert BEFORE INSERT ON projects WHEN (NEW.lifecycle='active' AND NEW.removed_at<>'') OR (NEW.lifecycle='removed' AND NEW.removed_at='') BEGIN SELECT RAISE(ABORT,'invalid project lifecycle'); END`,
+	`CREATE TRIGGER projects_lifecycle_shape_update BEFORE UPDATE OF lifecycle,removed_at ON projects WHEN (NEW.lifecycle='active' AND NEW.removed_at<>'') OR (NEW.lifecycle='removed' AND NEW.removed_at='') BEGIN SELECT RAISE(ABORT,'invalid project lifecycle'); END`,
+	`CREATE TRIGGER active_project_ticket_insert BEFORE INSERT ON tickets WHEN NOT EXISTS (SELECT 1 FROM projects p WHERE p.channel=NEW.channel AND p.id=NEW.project_id AND p.lifecycle='active') BEGIN SELECT RAISE(ABORT,'project registration is removed'); END`,
+}

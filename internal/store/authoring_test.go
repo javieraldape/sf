@@ -1,10 +1,13 @@
 package store
 
 import (
-	"github.com/nysa-company/sf/internal/contracts"
-	"github.com/nysa-company/sf/internal/domain"
+	"errors"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/nysa-company/sf/internal/contracts"
+	"github.com/nysa-company/sf/internal/domain"
 )
 
 func TestAuthoringReservationAuthorityIdempotencyAndDrain(t *testing.T) {
@@ -71,6 +74,29 @@ func TestAuthoringReservationAuthorityIdempotencyAndDrain(t *testing.T) {
 	}
 	if _, _, err := db.ReserveAuthoringTurn(ctx, session, "fifth", digest, epoch); err == nil {
 		t.Fatal("fifth turn accepted")
+	}
+}
+
+func TestRemovedProjectCannotReserveTurnInIdleSession(t *testing.T) {
+	db, ctx := openTestStore(t)
+	digest := strings.Repeat("a", 64)
+	session := AuthoringSession{Channel: domain.ChannelDev, ID: "removed-session", Purpose: "ticket_draft", Project: "nysa", ContextDigest: digest, Capability: contracts.AuthoringCapability{Identity: domain.ProviderIdentity{Provider: "claude", Model: "opus", Family: "claude", Version: "2.1.263"}, BinaryDigest: digest, AuthDigest: digest, PolicyDigest: digest}}
+	if err := db.CreateAuthoringSession(ctx, session); err != nil {
+		t.Fatal(err)
+	}
+	epoch, err := db.AcquireLeader(ctx, domain.ChannelDev, "removed-authoring")
+	if err != nil {
+		t.Fatal(err)
+	}
+	preview, err := db.ProjectRemovalPreview(ctx, domain.ChannelDev, "nysa")
+	if err != nil || !preview.CanRemove {
+		t.Fatalf("preview=%+v err=%v", preview, err)
+	}
+	if _, _, err := db.RemoveProject(ctx, domain.ChannelDev, "nysa", preview.Project.RegistrationGeneration, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := db.ReserveAuthoringTurn(ctx, session, "turn", digest, epoch); !errors.Is(err, ErrProjectRemoved) {
+		t.Fatalf("reserve error=%v", err)
 	}
 }
 

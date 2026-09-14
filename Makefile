@@ -82,7 +82,7 @@ test-upgrade:
 # The compiled walking skeleton is tagged because it builds and exercises the
 # Darwin guarded runtime. The test itself skips on non-Darwin hosts.
 test-compiled-e2e:
-	go test -count=1 -shuffle=off -p 1 -timeout 30m -tags sf_e2e ./cmd/sf -run '^(TestCompiledDev(GuardedWalkingSkeleton|ManualWalkingSkeleton|FriendlyOperatorTakeover|PREndpointWalkingSkeleton|NodePREndpointWalkingSkeleton)|TestCompiledStableAndDevDaemonsCoexist|TestCompiledCleanStateReadinessRefusalsAndOfflineStacks)$$'
+	go test -count=1 -shuffle=off -p 1 -timeout 30m -tags sf_e2e ./cmd/sf -run '^(TestCompiledDev(OnboardingUsesPrivateHomeAndLocalCommands|GuardedWalkingSkeleton|ManualWalkingSkeleton|FriendlyOperatorTakeover|PREndpointWalkingSkeleton|NodePREndpointWalkingSkeleton)|TestCompiledStableAndDevDaemonsCoexist|TestCompiledCleanStateReadinessRefusalsAndOfflineStacks)$$'
 
 # Explicit public-download acceptance; never silently pass by skipping on CI.
 .PHONY: test-python-e2e

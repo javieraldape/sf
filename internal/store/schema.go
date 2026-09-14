@@ -168,6 +168,9 @@ func (s *Store) validateSchema(ctx context.Context) error {
 		"ticket_execution_policies_immutable_delete",
 		"ticket_endpoint_consumptions_immutable_update",
 		"ticket_endpoint_consumptions_immutable_delete",
+		"projects_lifecycle_shape_insert",
+		"projects_lifecycle_shape_update",
+		"active_project_ticket_insert",
 	} {
 		var count int
 		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name=?`, trigger).Scan(&count); err != nil || count != 1 {
@@ -515,7 +518,7 @@ var requiredSchema = map[string][]string{
 	"ci_poll_attempts":                         {"channel", "project_id", "ticket_id", "candidate_generation", "candidate_head_sha", "candidate_tree_sha", "publication_witness_digest", "attempt", "polled_at"},
 	"ci_poll_retry_epochs":                     {"channel", "project_id", "ticket_id", "candidate_generation", "candidate_head_sha", "candidate_tree_sha", "publication_witness_digest", "initial_attempts", "exhaustion_ticket_version", "resume_ticket_version", "resume_leader_epoch", "resume_runner_epoch", "resumed_at", "deadline_at", "retry_digest"},
 	"daemon_instances":                         {"channel", "leader_epoch", "identity"},
-	"projects":                                 {"channel", "id", "canonical_path", "current_config_generation"},
+	"projects":                                 {"channel", "id", "canonical_path", "current_config_generation", "lifecycle", "registration_generation", "removed_at"},
 	"project_configurations":                   {"channel", "project_id", "generation", "digest", "snapshot_bytes", "created_at"},
 	"tickets":                                  {"channel", "project_id", "id", "version", "runner_epoch", "workflow_id", "title", "problem", "acceptance_json", "source_bytes", "priority", "created_at", "max_duration_ns", "max_cost_micro_usd", "config_generation", "config_digest", "config_snapshot_bytes"},
 	"workflow_owners":                          {"channel", "project_id", "ticket_id", "workflow_id"},

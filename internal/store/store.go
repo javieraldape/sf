@@ -24,24 +24,27 @@ import (
 )
 
 var (
-	ErrBusy                  = errors.New("sqlite write deadline exceeded")
-	ErrStaleFence            = errors.New("ticket fence is stale")
-	ErrNotFound              = errors.New("store row not found")
-	ErrBlocked               = errors.New("ticket is blocked")
-	ErrTerminalReplay        = errors.New("terminal ticket replay requires an explicit new ticket")
-	ErrStaleObservation      = errors.New("effect observation belongs to a stale ticket identity")
-	ErrEffectBusy            = errors.New("effect already has a live claim")
-	ErrEffectKey             = errors.New("effect semantic key conflicts with durable record")
-	ErrEvidenceConflict      = errors.New("evidence conflicts with durable record")
-	ErrBudgetExhausted       = errors.New("bounded ticket budget is exhausted")
-	ErrProjectConflict       = errors.New("project registration conflicts with durable record")
-	ErrBranchConflict        = errors.New("branch allocation conflicts with durable record")
-	ErrQualificationConflict = errors.New("provider qualification conflicts with durable record")
-	ErrProviderPairRefused   = errors.New("provider pair is not current, qualified, and independent")
-	ErrControlNotDrained     = errors.New("ticket control cannot complete before effects are reconciled")
-	ErrReadOnly              = errors.New("store is read-only")
-	ErrProviderCapacity      = errors.New("provider route capacity is exhausted")
-	ErrProviderAttempt       = errors.New("provider attempt cannot be admitted")
+	ErrBusy                    = errors.New("sqlite write deadline exceeded")
+	ErrStaleFence              = errors.New("ticket fence is stale")
+	ErrNotFound                = errors.New("store row not found")
+	ErrBlocked                 = errors.New("ticket is blocked")
+	ErrTerminalReplay          = errors.New("terminal ticket replay requires an explicit new ticket")
+	ErrStaleObservation        = errors.New("effect observation belongs to a stale ticket identity")
+	ErrEffectBusy              = errors.New("effect already has a live claim")
+	ErrEffectKey               = errors.New("effect semantic key conflicts with durable record")
+	ErrEvidenceConflict        = errors.New("evidence conflicts with durable record")
+	ErrBudgetExhausted         = errors.New("bounded ticket budget is exhausted")
+	ErrProjectConflict         = errors.New("project registration conflicts with durable record")
+	ErrProjectRemoved          = errors.New("project registration is removed")
+	ErrProjectRemovalBlocked   = errors.New("project removal is blocked by unfinished work or unresolved authority")
+	ErrProjectLifecycleChanged = errors.New("project registration lifecycle changed after preview")
+	ErrBranchConflict          = errors.New("branch allocation conflicts with durable record")
+	ErrQualificationConflict   = errors.New("provider qualification conflicts with durable record")
+	ErrProviderPairRefused     = errors.New("provider pair is not current, qualified, and independent")
+	ErrControlNotDrained       = errors.New("ticket control cannot complete before effects are reconciled")
+	ErrReadOnly                = errors.New("store is read-only")
+	ErrProviderCapacity        = errors.New("provider route capacity is exhausted")
+	ErrProviderAttempt         = errors.New("provider attempt cannot be admitted")
 	// ErrProviderAttemptLimit is distinct from the ticket time/cost budget. It
 	// is the only coordinator outcome that may enter the durable provider
 	// exhaustion pause and, eventually, the one operator retry epoch.
@@ -81,7 +84,7 @@ var (
 	ErrCIObservation           = errors.New("CI observation is missing, malformed, stale, or conflicts with durable evidence")
 )
 
-const schemaVersion = 63
+const schemaVersion = 64
 
 var migrationChecksums = map[int]string{
 	1:  migrationChecksum(migrationV1),
@@ -147,6 +150,7 @@ var migrationChecksums = map[int]string{
 	61: migrationChecksum(migrationV61),
 	62: migrationChecksum(migrationV62),
 	63: migrationChecksum(migrationV63),
+	64: migrationChecksum(migrationV64),
 }
 
 func migrationChecksum(statements []string) string {
@@ -213,13 +217,16 @@ func (s *Store) injectedCIConsumeFault(stage string) error {
 }
 
 type Project struct {
-	Channel          domain.Channel
-	ID               domain.ProjectID
-	Path             string
-	BaseRef          string
-	ConfigGeneration uint64
-	ConfigDigest     string
-	ConfigSnapshot   []byte
+	Channel                domain.Channel
+	ID                     domain.ProjectID
+	Path                   string
+	BaseRef                string
+	ConfigGeneration       uint64
+	ConfigDigest           string
+	ConfigSnapshot         []byte
+	Lifecycle              ProjectLifecycle
+	RegistrationGeneration uint64
+	RemovedAt              time.Time
 }
 
 // ProjectConfiguration is a proposed next immutable configuration generation.
@@ -585,6 +592,8 @@ func (s *Store) migrate(ctx context.Context) error {
 				statements = migrationV62
 			} else if version == 63 {
 				statements = migrationV63
+			} else if version == 64 {
+				statements = migrationV64
 			}
 			for _, statement := range statements {
 				if _, err := conn.ExecContext(ctx, statement); err != nil {
@@ -713,11 +722,11 @@ func (s *Store) RegisterProject(ctx context.Context, project Project) (bool, err
 		var existing Project
 		existing.Channel, existing.ID = project.Channel, project.ID
 		err := conn.QueryRowContext(ctx, `SELECT p.canonical_path, p.base_ref, p.current_config_generation,
-			COALESCE(c.digest, ''), COALESCE(c.snapshot_bytes, X'')
+			COALESCE(c.digest, ''), COALESCE(c.snapshot_bytes, X''),p.lifecycle,p.registration_generation
 			FROM projects p LEFT JOIN project_configurations c
 			ON c.channel=p.channel AND c.project_id=p.id AND c.generation=p.current_config_generation
 			WHERE p.channel=? AND p.id=?`, project.Channel, project.ID).Scan(
-			&existing.Path, &existing.BaseRef, &existing.ConfigGeneration, &existing.ConfigDigest, &existing.ConfigSnapshot,
+			&existing.Path, &existing.BaseRef, &existing.ConfigGeneration, &existing.ConfigDigest, &existing.ConfigSnapshot, &existing.Lifecycle, &existing.RegistrationGeneration,
 		)
 		if errors.Is(err, sql.ErrNoRows) {
 			if err := insertProject(ctx, conn, project); err != nil {
@@ -729,9 +738,42 @@ func (s *Store) RegisterProject(ctx context.Context, project Project) (bool, err
 		if err != nil {
 			return err
 		}
-		if existing.Path != project.Path || existing.BaseRef != project.BaseRef || existing.ConfigGeneration != project.ConfigGeneration || existing.ConfigDigest != project.ConfigDigest || !bytes.Equal(existing.ConfigSnapshot, project.ConfigSnapshot) {
+		if existing.Path != project.Path || existing.BaseRef != project.BaseRef {
 			return ErrProjectConflict
 		}
+		if existing.Lifecycle == ProjectActive {
+			if existing.ConfigGeneration != project.ConfigGeneration || existing.ConfigDigest != project.ConfigDigest || !bytes.Equal(existing.ConfigSnapshot, project.ConfigSnapshot) {
+				return ErrProjectConflict
+			}
+			return nil
+		}
+		if existing.ConfigDigest != project.ConfigDigest || !bytes.Equal(existing.ConfigSnapshot, project.ConfigSnapshot) {
+			var prior int
+			if err := conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM project_configurations WHERE channel=? AND project_id=? AND digest=?`, project.Channel, project.ID, project.ConfigDigest).Scan(&prior); err != nil {
+				return err
+			}
+			if prior != 0 {
+				return ErrProjectConflict
+			}
+			nextConfig := existing.ConfigGeneration + 1
+			if _, err := conn.ExecContext(ctx, `INSERT INTO project_configurations(channel,project_id,generation,digest,snapshot_bytes,created_at) VALUES(?,?,?,?,?,?)`, project.Channel, project.ID, nextConfig, project.ConfigDigest, project.ConfigSnapshot, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+				return err
+			}
+			if _, err := conn.ExecContext(ctx, `UPDATE projects SET current_config_generation=? WHERE channel=? AND id=?`, nextConfig, project.Channel, project.ID); err != nil {
+				return err
+			}
+		}
+		if existing.RegistrationGeneration == ^uint64(0) {
+			return ErrProjectLifecycleChanged
+		}
+		updated, err := conn.ExecContext(ctx, `UPDATE projects SET lifecycle='active',registration_generation=registration_generation+1,removed_at='' WHERE channel=? AND id=? AND lifecycle='removed'`, project.Channel, project.ID)
+		if err != nil {
+			return err
+		}
+		if changed, _ := updated.RowsAffected(); changed != 1 {
+			return ErrProjectLifecycleChanged
+		}
+		created = true
 		return nil
 	})
 	return created, err
@@ -757,18 +799,22 @@ func (s *Store) ApplyProjectConfiguration(ctx context.Context, proposal ProjectC
 		result = Project{Channel: proposal.Channel, ID: proposal.Project}
 		var currentDigest string
 		var currentSnapshot []byte
+		var lifecycle ProjectLifecycle
 		err := conn.QueryRowContext(ctx, `SELECT p.canonical_path, p.base_ref, p.current_config_generation,
-			COALESCE(c.digest, ''), COALESCE(c.snapshot_bytes, X'')
+			COALESCE(c.digest, ''), COALESCE(c.snapshot_bytes, X''),p.lifecycle
 			FROM projects p LEFT JOIN project_configurations c
 			ON c.channel=p.channel AND c.project_id=p.id AND c.generation=p.current_config_generation
 			WHERE p.channel=? AND p.id=?`, proposal.Channel, proposal.Project).Scan(
-			&result.Path, &result.BaseRef, &result.ConfigGeneration, &currentDigest, &currentSnapshot,
+			&result.Path, &result.BaseRef, &result.ConfigGeneration, &currentDigest, &currentSnapshot, &lifecycle,
 		)
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotFound
 		}
 		if err != nil {
 			return err
+		}
+		if lifecycle != ProjectActive {
+			return ErrProjectRemoved
 		}
 		if result.Path != proposal.Path || result.BaseRef != proposal.BaseRef {
 			return ErrProjectConflict
@@ -811,7 +857,7 @@ func (s *Store) ApplyProjectConfiguration(ctx context.Context, proposal ProjectC
 			VALUES (?, ?, ?, ?, ?, ?)`, proposal.Channel, proposal.Project, next, proposal.Digest, proposal.Snapshot, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
 			return err
 		}
-		updated, err := conn.ExecContext(ctx, `UPDATE projects SET current_config_generation=?
+		updated, err := conn.ExecContext(ctx, `UPDATE projects SET current_config_generation=?,registration_generation=registration_generation+1
 			WHERE channel=? AND id=? AND current_config_generation=?`, next, proposal.Channel, proposal.Project, result.ConfigGeneration)
 		if err != nil {
 			return err
@@ -865,6 +911,12 @@ func validateProjectRegistration(project Project, requireSnapshot bool) error {
 	if project.ConfigDigest != hex.EncodeToString(digest[:]) {
 		return fmt.Errorf("project configuration digest does not match snapshot")
 	}
+	if requireSnapshot {
+		effective, err := config.DecodeSnapshot(project.ConfigSnapshot, project.ConfigDigest)
+		if err != nil || effective.Name != string(project.ID) || effective.Repository != project.Path || effective.BaseBranch != project.BaseRef {
+			return errors.New("project configuration snapshot does not match registration identity")
+		}
+	}
 	return nil
 }
 
@@ -886,16 +938,23 @@ func (s *Store) Project(ctx context.Context, channel domain.Channel, id domain.P
 		return Project{}, errors.New("valid project channel and id are required")
 	}
 	project := Project{Channel: channel, ID: id}
+	var removedAt string
 	err := s.db.QueryRowContext(ctx, `SELECT p.canonical_path, p.base_ref, p.current_config_generation,
-		COALESCE(c.digest, ''), COALESCE(c.snapshot_bytes, X'')
+		COALESCE(c.digest, ''), COALESCE(c.snapshot_bytes, X''),p.lifecycle,p.registration_generation,p.removed_at
 		FROM projects p LEFT JOIN project_configurations c
 		ON c.channel=p.channel AND c.project_id=p.id AND c.generation=p.current_config_generation
-		WHERE p.channel=? AND p.id=?`, channel, id).Scan(&project.Path, &project.BaseRef, &project.ConfigGeneration, &project.ConfigDigest, &project.ConfigSnapshot)
+		WHERE p.channel=? AND p.id=?`, channel, id).Scan(&project.Path, &project.BaseRef, &project.ConfigGeneration, &project.ConfigDigest, &project.ConfigSnapshot, &project.Lifecycle, &project.RegistrationGeneration, &removedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Project{}, ErrNotFound
 	}
 	if err != nil {
 		return Project{}, normalizeBusy(ctx, err)
+	}
+	if removedAt != "" {
+		project.RemovedAt, err = time.Parse(time.RFC3339Nano, removedAt)
+		if err != nil {
+			return Project{}, err
+		}
 	}
 	return project, nil
 }
@@ -905,7 +964,7 @@ func (s *Store) Projects(ctx context.Context, channel domain.Channel) ([]Project
 		return nil, fmt.Errorf("invalid channel %q", channel)
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT p.id, p.canonical_path, p.base_ref, p.current_config_generation,
-		COALESCE(c.digest, ''), COALESCE(c.snapshot_bytes, X'')
+		COALESCE(c.digest, ''), COALESCE(c.snapshot_bytes, X''),p.lifecycle,p.registration_generation,p.removed_at
 		FROM projects p LEFT JOIN project_configurations c
 		ON c.channel=p.channel AND c.project_id=p.id AND c.generation=p.current_config_generation
 		WHERE p.channel=? ORDER BY p.id`, channel)
@@ -916,8 +975,15 @@ func (s *Store) Projects(ctx context.Context, channel domain.Channel) ([]Project
 	var projects []Project
 	for rows.Next() {
 		project := Project{Channel: channel}
-		if err := rows.Scan(&project.ID, &project.Path, &project.BaseRef, &project.ConfigGeneration, &project.ConfigDigest, &project.ConfigSnapshot); err != nil {
+		var removedAt string
+		if err := rows.Scan(&project.ID, &project.Path, &project.BaseRef, &project.ConfigGeneration, &project.ConfigDigest, &project.ConfigSnapshot, &project.Lifecycle, &project.RegistrationGeneration, &removedAt); err != nil {
 			return nil, err
+		}
+		if removedAt != "" {
+			project.RemovedAt, err = time.Parse(time.RFC3339Nano, removedAt)
+			if err != nil {
+				return nil, err
+			}
 		}
 		projects = append(projects, project)
 	}
@@ -944,6 +1010,13 @@ func (s *Store) CreateTicket(ctx context.Context, ticket Ticket) error {
 		ticket.RunnerEpoch = 1
 	}
 	return s.write(ctx, func(conn *sql.Conn) error {
+		var active int
+		if err := conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM projects WHERE channel=? AND id=? AND lifecycle='active'`, ticket.Ref.Channel, ticket.Ref.Project).Scan(&active); err != nil {
+			return err
+		}
+		if active != 1 {
+			return ErrProjectRemoved
+		}
 		return insertTicket(ctx, conn, ticket)
 	})
 }
@@ -1037,10 +1110,14 @@ func resolveSubmittedTicketPolicy(ctx context.Context, conn *sql.Conn, ticket Ti
 		COALESCE(c.digest, ''),COALESCE(c.snapshot_bytes, X'')
 		FROM projects p LEFT JOIN project_configurations c
 		ON c.channel=p.channel AND c.project_id=p.id AND c.generation=p.current_config_generation
-		WHERE p.channel=? AND p.id=?`, ticket.Ref.Channel, ticket.Ref.Project).Scan(
+		WHERE p.channel=? AND p.id=? AND p.lifecycle='active'`, ticket.Ref.Channel, ticket.Ref.Project).Scan(
 		&project.Path, &project.BaseRef, &project.ConfigGeneration, &project.ConfigDigest, &project.ConfigSnapshot,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
+		var exists int
+		if scanErr := conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM projects WHERE channel=? AND id=?`, ticket.Ref.Channel, ticket.Ref.Project).Scan(&exists); scanErr == nil && exists == 1 {
+			return Ticket{}, ErrProjectRemoved
+		}
 		return Ticket{}, ErrNotFound
 	}
 	if err != nil {
@@ -1309,6 +1386,13 @@ func (s *Store) StartOrAdopt(ctx context.Context, ref domain.TicketRef, expected
 	}
 	defer s.mutations.unlock()
 	err := s.write(ctx, func(conn *sql.Conn) error {
+		var projectActive int
+		if err := conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM projects WHERE channel=? AND id=? AND lifecycle='active'`, ref.Channel, ref.Project).Scan(&projectActive); err != nil {
+			return err
+		}
+		if projectActive != 1 {
+			return ErrProjectRemoved
+		}
 		var state domain.State
 		var persistedWorkflowID string
 		var version, runner uint64

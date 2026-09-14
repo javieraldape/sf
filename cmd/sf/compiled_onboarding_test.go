@@ -168,4 +168,55 @@ func TestCompiledDevOnboardingUsesPrivateHomeAndLocalCommands(t *testing.T) {
 	if err != nil || len(tickets) != 0 {
 		t.Fatalf("local commands submitted tickets: %v %v", tickets, err)
 	}
+	// Exercise the actual packaged CLI repair, not a fake repair callback.
+	// Missing provider tools remain guided failures in this isolated HOME.
+	if err := os.Chmod(paths.Logs, 0755); err != nil {
+		t.Fatal(err)
+	}
+	fixPreview := request("doctor", "fix", "--dry-run")
+	if fixPreview.Mutation.Attempted {
+		t.Fatalf("preview mutated: %+v", fixPreview)
+	}
+	if info, err := os.Stat(paths.Logs); err != nil || info.Mode().Perm() != 0755 {
+		t.Fatalf("preview changed permissions: %v", err)
+	}
+	fix := request("doctor", "fix", "--yes")
+	if !fix.Mutation.Attempted {
+		t.Fatalf("repair not applied: %+v", fix)
+	}
+	if info, err := os.Stat(paths.Logs); err != nil || info.Mode().Perm() != 0700 {
+		t.Fatalf("repair did not restore permissions: %v", err)
+	}
+	if again := request("doctor", "fix", "--yes"); again.Mutation.Attempted {
+		t.Fatalf("repair not idempotent: %+v", again)
+	}
+	previewRemoval := request("project", "remove", "my-app", "--dry-run")
+	if !previewRemoval.OK || previewRemoval.Mutation.Attempted {
+		t.Fatalf("removal preview=%+v", previewRemoval)
+	}
+	if removed := request("project", "remove", "my-app", "--yes"); !removed.OK {
+		t.Fatalf("remove=%+v", removed)
+	}
+	var projectList struct {
+		Projects []struct {
+			State string `json:"state"`
+		} `json:"projects"`
+	}
+	listed := request("project", "list")
+	if !listed.OK || json.Unmarshal(listed.Data, &projectList) != nil || len(projectList.Projects) != 0 {
+		t.Fatalf("active projects=%+v", listed)
+	}
+	listed = request("project", "list", "--all")
+	if !listed.OK || json.Unmarshal(listed.Data, &projectList) != nil || len(projectList.Projects) != 1 || projectList.Projects[0].State != "removed" {
+		t.Fatalf("retained registration=%+v", listed)
+	}
+	if data, err := os.ReadFile(draft); err != nil || !bytes.Equal(data, template) {
+		t.Fatalf("removal changed draft: %v", err)
+	}
+	if registered := request("init"); !registered.OK {
+		t.Fatalf("reactivation=%+v", registered)
+	}
+	if project, err := database.Project(context.Background(), domain.ChannelDev, "my-app"); err != nil || project.Lifecycle != store.ProjectActive {
+		t.Fatalf("reactivated=%+v %v", project, err)
+	}
 }

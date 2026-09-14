@@ -77,7 +77,7 @@ func configureCanonicalHelp(root *cobra.Command) {
 		switch command.Name() {
 		case "ticket", "factory", "home":
 			command.GroupID = "primary"
-		case "auth", "init", "providers", "config", "doctor", "version", "bundle", "runtimes", "update", "rollback":
+		case "auth", "init", "project", "providers", "config", "doctor", "version", "bundle", "runtimes", "update", "rollback":
 			command.GroupID = "setup"
 		default:
 			command.GroupID = "compatibility"

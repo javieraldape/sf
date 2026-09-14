@@ -79,7 +79,7 @@ func productionDoctorRepositoryBase(channel domain.Channel, databasePath string)
 func doctorRegisteredBase(projects []store.Project, channel domain.Channel, repository string) (string, error) {
 	base := ""
 	for _, project := range projects {
-		if project.Path != repository {
+		if project.Lifecycle == store.ProjectRemoved || project.Path != repository {
 			continue
 		}
 		frozen, err := config.DecodeSnapshot(project.ConfigSnapshot, project.ConfigDigest)

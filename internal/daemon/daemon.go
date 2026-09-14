@@ -1176,6 +1176,9 @@ func (daemon *Daemon) submit(ctx context.Context, request api.Request, _ domain.
 		}
 		return daemon.failure(request, submitErrorCode(err), "ticket project registration could not be read", errors.Is(err, store.ErrBusy))
 	}
+	if project.Lifecycle == store.ProjectRemoved {
+		return daemon.failure(request, "project_removed", "project was removed from SF management; run init in its repository to reactivate it", false)
+	}
 	if parsed.MergeModeExplicit && parsed.MergeMode == domain.MergeAutonomous {
 		return daemon.failure(request, "autonomous_unavailable", "autonomous workflows are unavailable in v1; choose guarded or manual merge mode and resubmit the ticket", false)
 	}
@@ -2521,7 +2524,7 @@ func (daemon *Daemon) failure(request api.Request, code, message string, retryab
 	if code == "doctor_required" || code == "operator_identity_required" {
 		argv = []string{binary, "doctor"}
 	}
-	if code == "unknown_project" {
+	if code == "unknown_project" || code == "project_removed" {
 		argv = []string{binary, "init", "--help"}
 	}
 	if code == "invalid_submit" {
@@ -2691,6 +2694,8 @@ func decodeParameters(raw json.RawMessage, destination any) error {
 
 func submitErrorCode(err error) string {
 	switch {
+	case errors.Is(err, store.ErrProjectRemoved):
+		return "project_removed"
 	case errors.Is(err, store.ErrTerminalReplay):
 		return "terminal_replay_requires_new"
 	case errors.Is(err, store.ErrNotFound):
