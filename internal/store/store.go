@@ -914,7 +914,7 @@ func validateProjectRegistration(project Project, requireSnapshot bool) error {
 	if requireSnapshot {
 		effective, err := config.DecodeSnapshot(project.ConfigSnapshot, project.ConfigDigest)
 		if err != nil || effective.Name != string(project.ID) || effective.Repository != project.Path || effective.BaseBranch != project.BaseRef {
-			return errors.New("project configuration snapshot does not match registration identity")
+			return fmt.Errorf("%w: project configuration snapshot does not match registration identity", ErrProjectConflict)
 		}
 	}
 	return nil
