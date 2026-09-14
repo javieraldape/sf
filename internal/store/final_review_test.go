@@ -51,11 +51,19 @@ func finalReviewLifecycleFixtureWithPending(t *testing.T, pending int) finalRevi
 }
 
 func finalReviewLifecycleFixtureForPending(t *testing.T, ticketType domain.TicketType, mergeMode domain.MergeMode, pending int, restartWaitingCI ...bool) finalReviewFixture {
+	return finalReviewLifecycleFixtureForPendingEndpoint(t, ticketType, mergeMode, pending, "", restartWaitingCI...)
+}
+
+func finalReviewLifecycleEndpointFixture(t *testing.T) finalReviewFixture {
+	return finalReviewLifecycleFixtureForPendingEndpoint(t, domain.TicketFeature, domain.MergeGuarded, 0, ExecutionEndpointPR)
+}
+
+func finalReviewLifecycleFixtureForPendingEndpoint(t *testing.T, ticketType domain.TicketType, mergeMode domain.MergeMode, pending int, endpoint string, restartWaitingCI ...bool) finalReviewFixture {
 	t.Helper()
 	if pending < 0 || pending > 4 {
 		t.Fatalf("invalid pending CI fixture count=%d", pending)
 	}
-	db, ctx, publishing, fence := publicationLifecycleFixtureFor(t, ticketType, mergeMode)
+	db, ctx, publishing, fence := publicationLifecycleFixtureForEndpoint(t, ticketType, mergeMode, endpoint)
 	recordFixturePublication(t, db, ctx, publishing, fence)
 	if _, err := db.TransitionPublishedCandidate(ctx, Transition{Ref: publishing.Ref, ExpectedVersion: publishing.Version, From: domain.StatePublishing, To: domain.StateWaitingCI, Trigger: "effects_confirmed", Fence: fence, EventPayload: `{}`}); err != nil {
 		t.Fatal(err)
@@ -63,6 +71,23 @@ func finalReviewLifecycleFixtureForPending(t *testing.T, ticketType domain.Ticke
 	waiting, err := db.Ticket(ctx, publishing.Ref)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if endpoint == ExecutionEndpointPR {
+		leader, err := db.AcquireLeader(ctx, waiting.Ref.Channel, "endpoint-final-review")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if changed, err := db.FenceRecoveredRunners(ctx, waiting.Ref.Channel, leader); err != nil || changed != 0 {
+			t.Fatalf("paused endpoint recovery changed=%d err=%v", changed, err)
+		}
+		if err := db.RebindRecoveredPublishedCandidates(ctx, waiting.Ref.Channel, leader); err != nil {
+			t.Fatal(err)
+		}
+		waiting, _, err = db.ResumePREndpoint(ctx, waiting.Ref, waiting.Version, domain.Fence{LeaderEpoch: leader, RunnerEpoch: waiting.RunnerEpoch})
+		if err != nil {
+			t.Fatal(err)
+		}
+		fence = domain.Fence{LeaderEpoch: leader, RunnerEpoch: waiting.RunnerEpoch}
 	}
 	restart := func() {
 		leader, err := db.AcquireLeader(ctx, waiting.Ref.Channel, "waiting-ci-before-refresh")
@@ -762,6 +787,20 @@ func TestFinalReviewTransitionsDeriveManualGuardedSpikeAndRejectAutonomous(t *te
 				}
 			}
 		})
+	}
+}
+
+func TestFinalReviewAuthorityTraversesPREndpointContinuation(t *testing.T) {
+	fixture := finalReviewLifecycleEndpointFixture(t)
+	authority, err := fixture.db.FinalReviewAuthority(fixture.ctx, fixture.ticket.Ref, fixture.ticket.Version, fixture.fence)
+	if err != nil {
+		t.Fatalf("endpoint final review authority: %v", err)
+	}
+	if authority.Candidate.Snapshot != fixture.candidate.Snapshot || authority.Checks.HeadSHA != fixture.candidate.Snapshot.HeadSHA {
+		t.Fatalf("endpoint final review authority=%+v", authority)
+	}
+	if err := fixture.db.ValidateFinalReviewEvidence(fixture.ctx, fixture.ticket.Ref, fixture.ticket.Version, fixture.fence, fixture.candidate.Snapshot.HeadSHA, fixture.candidate.Snapshot.ProofDigest); err != nil {
+		t.Fatalf("endpoint reviewer admission evidence: %v", err)
 	}
 }
 

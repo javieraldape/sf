@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"sync"
 
 	"github.com/nysa-company/sf/internal/domain"
 	"github.com/nysa-company/sf/internal/store"
@@ -201,6 +202,15 @@ type Scheduler struct {
 	// filtered into an invisible forever-waiting state.
 	AdmitPublishing bool
 	admission       *admission
+	selection       *schedulerSelection
+}
+
+// selection is a bounded, volatile fairness hint, never lifecycle authority.
+// All runtime loops share it, while every selected ticket must still pass
+// admission and the current Store fence checks. Restart resets the hint.
+type schedulerSelection struct {
+	mu    sync.Mutex
+	after domain.TicketRef
 }
 
 func NewScheduler(channel domain.Channel, tickets TicketSource, worktrees WorktreeEnsurer, worker Worker) *Scheduler {
@@ -208,11 +218,11 @@ func NewScheduler(channel domain.Channel, tickets TicketSource, worktrees Worktr
 }
 
 func newScheduler(channel domain.Channel, tickets TicketSource, worktrees WorktreeEnsurer, worker Worker, admission *admission) *Scheduler {
-	return &Scheduler{Channel: channel, Tickets: tickets, Worktrees: worktrees, Worker: worker, AdmitPublishing: true, admission: admission}
+	return &Scheduler{Channel: channel, Tickets: tickets, Worktrees: worktrees, Worker: worker, AdmitPublishing: true, admission: admission, selection: &schedulerSelection{}}
 }
 
 func (s Scheduler) validate() error {
-	if !s.Channel.Valid() || s.Tickets == nil || s.Worktrees == nil || s.Worker == nil || s.admission == nil {
+	if !s.Channel.Valid() || s.Tickets == nil || s.Worktrees == nil || s.Worker == nil || s.admission == nil || s.selection == nil {
 		return ErrInvalidScheduler
 	}
 	return nil
@@ -253,6 +263,18 @@ func (s Scheduler) Tick(ctx context.Context, fence domain.Fence) TickResult {
 		}
 		return left.Ticket < right.Ticket
 	})
+	// Begin after the last admitted ticket, wrapping at most once. Rotate an
+	// owned snapshot only: concurrent ticks may use a source's backing slice.
+	s.selection.mu.Lock()
+	after := s.selection.after
+	s.selection.mu.Unlock()
+	start := sort.Search(len(tickets), func(i int) bool {
+		ref := tickets[i].Ref
+		return ref.Project > after.Project || (ref.Project == after.Project && ref.Ticket > after.Ticket)
+	})
+	if start > 0 && start < len(tickets) {
+		tickets = append(tickets[start:len(tickets):len(tickets)], tickets[:start]...)
+	}
 	var lastBenign *TickResult
 	for _, ticket := range tickets {
 		if ticket.Ref.Channel != s.Channel || !s.activeState(ticket.State) {
@@ -274,6 +296,11 @@ func (s Scheduler) Tick(ctx context.Context, fence domain.Fence) TickResult {
 			lastBenign = &TickResult{Outcome: OutcomeCanceled, Ref: ticket.Ref, Ticket: ticket, Fence: candidateFence, Err: ErrCanceled}
 			continue
 		}
+		// Advance before readiness/worker execution so an unchanged external
+		// wait or a repeated readiness error cannot starve another ticket.
+		s.selection.mu.Lock()
+		s.selection.after = ticket.Ref
+		s.selection.mu.Unlock()
 		// Register before the durable current-row check and every external
 		// boundary, so control can cancel this exact activity first.
 		current, currentErr := s.Tickets.Ticket(runCtx, ticket.Ref)

@@ -24,6 +24,10 @@ not yet a packaged general-purpose installer for every language or provider.
 
 ## Development
 
+Contributors should start with [CONTRIBUTING.md](CONTRIBUTING.md). Security
+reports belong in the private process described by [SECURITY.md](SECURITY.md);
+never attach raw provider logs or credential-bearing diagnostics.
+
 Prerequisites: Go 1.25 or newer, Git, the official `gh` CLI, and supported AI
 provider CLIs.
 

@@ -1,5 +1,23 @@
 # Configuration
 
+## Explicit three-ticket execution
+
+The foreground daemon defaults to two scheduler workers and one concurrent
+Codex call per authenticated account. To opt into a bounded three-worker run,
+start it with `SF_WORKFLOW_WORKERS=3 SF_CODEX_PROVIDER_CAPACITY=3 sf factory run`
+(or the development-channel binary). Both variables accept only `1`, `2`, or
+`3`; malformed values fail closed. They do not increase the machine or project
+`max_concurrent_tickets` limits. Configure those limits separately before
+starting tickets. Existing waiting tickets still occupy ticket capacity.
+
+The scheduler rotates after each admitted ticket so unchanged waits and failed
+readiness checks cannot repeatedly monopolize the first position. The rotation
+is an in-memory hint, not durable workflow state; restart resets ordering, while
+SQLite fences, provider/account leases, and repository writer exclusion remain
+authoritative. Three configured workers do not by themselves prove three live
+model calls: capacity, account limits, and exclusive Git/test operations may
+still defer work. Verify overlap from recorded attempt timestamps.
+
 The factory has two configuration layers: an optional owner-local machine cap
 and an optional committed project file. Both are strict TOML; unknown fields,
 shell strings, symlinks, oversized files, unsafe identifiers, and values above
@@ -200,3 +218,9 @@ This recipe requires Node `>=22.8.0 <23`. On macOS sf accepts only the
 authenticated resolved executable behind the supported Homebrew entrypoints
 `/opt/homebrew/bin/node` (Apple Silicon) or `/usr/local/bin/node` (Intel), and
 copies that runtime's non-system Mach-O closure into a private launch stage.
+Use Homebrew's `node@22` distribution with that entrypoint resolving to its
+executable. The staging boundary permits at most 64 MiB per executable/library
+and 256 MiB for the complete closure. A monolithic Node distribution can exceed
+these bounds even when its version matches; SF refuses it rather than executing
+an unstaged fallback. GitHub's compiled onboarding acceptance provisions the
+Homebrew layout and checks the production runtime identity before starting a ticket.

@@ -1,0 +1,72 @@
+name: scheduler-fairness
+on:
+  push:
+    branches: [fix/scheduler-fairness]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  reproduce:
+    runs-on: macos-14
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Expose approved repository-test toolchain
+        run: |
+          set -eu
+          setup_go=$(command -v go)
+          sudo mkdir -p /usr/local/go/bin
+          sudo ln -sfn "$setup_go" /usr/local/go/bin/go
+          test "$(readlink /usr/local/go/bin/go)" = "$setup_go"
+      - name: Fairness, concurrency, and control regression suites
+        # Full integration/race inventory runs independently in repository-baseline.
+        # Keep this diagnostic lane bounded so unrelated long fixtures do not
+        # hide feedback on scheduling and the new worker/account ceiling.
+        run: |
+          go test -race -p 1 -count=1 ./internal/workflowruntime -run '^Test(Scheduler|Runtime|Admission|ControlBundle|StoreBackedPostOpen)'
+          go test -race -p 1 -count=1 ./internal/codexprovider
+          go test -race -p 1 -count=1 ./internal/providercoord
+      - name: Production worker configuration
+        run: go test -p 1 -count=1 ./cmd/sf -run '^TestWorkflowWorkerCountIsBoundedAndOptIn$'
+      - name: Durable shared-account capacity boundary
+        run: go test -race -p 1 -count=1 ./internal/store -run '^TestProvider(ThreeCapacityRetainsFourthAdmissionExclusion|AdmissionUsesPairCapacityAndFreshFences)$'
+      - name: Prove old scheduler starves its sibling
+        run: |
+          cp internal/workflowruntime/scheduler.go "$RUNNER_TEMP/scheduler-fixed.go"
+          trap 'cp "$RUNNER_TEMP/scheduler-fixed.go" internal/workflowruntime/scheduler.go' EXIT
+          git show a40a0159c9b930fb7cc09b9ed4bd0d5373b72a01:internal/workflowruntime/scheduler.go > internal/workflowruntime/scheduler.go
+          set +e
+          go test -p 1 -count=1 ./internal/workflowruntime -run '^TestSchedulerRotatesPastUnchangedWaitingTicket$' -v > "$RUNNER_TEMP/starvation.log" 2>&1
+          result=$?
+          set -e
+          cat "$RUNNER_TEMP/starvation.log"
+          test "$result" -ne 0
+          grep -Fq 'fair scheduling: got a-wait (invoked), want b-build' "$RUNNER_TEMP/starvation.log"
+      - name: Static checks
+        run: |
+          go vet ./internal/workflowruntime ./internal/codexprovider
+          scripts/repo-check
+          scripts/secret-scan
+      - name: Build validated pilot bundle
+        run: |
+          make build-dev COMMIT="$(git rev-parse HEAD)" DEV_VERSION=0.1.0-dev.scheduler-fairness
+          (cd bin && shasum -a 256 sf-dev sf-git-exec-dev sf-git-credential-dev sf-ssh-dev github_known_hosts) > bin/SHA256SUMS
+          git rev-parse HEAD > bin/COMMIT
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scheduler-fairness-macos-arm64
+          path: |
+            bin/sf-dev
+            bin/sf-git-exec-dev
+            bin/sf-git-credential-dev
+            bin/sf-ssh-dev
+            bin/github_known_hosts
+            bin/SHA256SUMS
+            bin/COMMIT
+          if-no-files-found: error

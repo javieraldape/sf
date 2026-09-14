@@ -165,6 +165,10 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	runDaemon := func(runCtx context.Context) error {
+		workers, err := workflowWorkerCount(os.Getenv("SF_WORKFLOW_WORKERS"))
+		if err != nil {
+			return err
+		}
 		executable, err := os.Executable()
 		if err != nil {
 			return err
@@ -202,12 +206,27 @@ func main() {
 				SSHAgentSock:      os.Getenv("SSH_AUTH_SOCK"),
 				GHAuthenticated:   !prePublishingOnly,
 				PrePublishingOnly: prePublishingOnly,
-				Workers:           2,
+				Workers:           workers,
 			}),
 		}, executable))
 		return errors.Join(runErr, supervisor.Close())
 	}
 	os.Exit(cli.ExecuteWithDaemon(ctx, os.Args[1:], os.Stdout, os.Stderr, cli.SocketClient{Path: paths.Socket}, runDaemon))
+}
+
+// Workflow workers bound scheduler operations, not provider or ticket leases.
+// Store still independently enforces each of those admission limits.
+func workflowWorkerCount(value string) (int, error) {
+	switch value {
+	case "", "2":
+		return 2, nil
+	case "1":
+		return 1, nil
+	case "3":
+		return 3, nil
+	default:
+		return 0, errors.New("invalid SF_WORKFLOW_WORKERS: expected 1, 2, or 3")
+	}
 }
 
 // Recovery precedes WorkflowRuntimeFactory. Supply its read-only Git boundary

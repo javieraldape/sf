@@ -2,6 +2,7 @@ package store
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -58,5 +59,32 @@ func TestStartReadinessRefusesConfigurationAdvanceWithoutMutation(t *testing.T) 
 	_, observed, err = db.StartWithCheckedProjectOwnership(ctx, ref, started.Version, fence, workflow, time.Now().UTC(), current)
 	if err != nil || !observed {
 		t.Fatalf("replay: observed=%v err=%v", observed, err)
+	}
+}
+
+func TestStartPersistsOptInPREndpointAndDefaultRemainsAbsent(t *testing.T) {
+	db, ctx := openTestStore(t)
+	project := testConfigurationProject(t, "start-endpoint", "/tmp/start-endpoint", 2)
+	if err := db.CreateProject(ctx, project); err != nil {
+		t.Fatal(err)
+	}
+	leader, err := db.AcquireLeader(ctx, project.Channel, "start-endpoint")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index, endpoint := range []string{"", ExecutionEndpointPR} {
+		ref := domain.TicketRef{Channel: project.Channel, Project: project.ID, Ticket: domain.TicketID(fmt.Sprintf("SF-endpoint-%d", index))}
+		if err := db.CreateTicket(ctx, ticket(ref, fmt.Sprintf("endpoint-%d", index))); err != nil {
+			t.Fatal(err)
+		}
+		queued, _ := db.Ticket(ctx, ref)
+		_, _, err := db.StartWithProjectOwnershipUntil(ctx, ref, queued.Version, domain.Fence{LeaderEpoch: leader, RunnerEpoch: queued.RunnerEpoch}, fmt.Sprintf("dev/start-endpoint/%s/planning", ref.Ticket), time.Now().UTC(), endpoint)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var count int
+		if err := db.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM ticket_execution_policies WHERE channel=? AND project_id=? AND ticket_id=?`, ref.Channel, ref.Project, ref.Ticket).Scan(&count); err != nil || count != index {
+			t.Fatalf("endpoint=%q count=%d err=%v", endpoint, count, err)
+		}
 	}
 }

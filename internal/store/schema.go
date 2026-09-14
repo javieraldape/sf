@@ -164,6 +164,10 @@ func (s *Store) validateSchema(ctx context.Context) error {
 		"external_cleanup_checkpoints_immutable_delete",
 		"external_cleanup_recoveries_immutable_update",
 		"external_cleanup_recoveries_immutable_delete",
+		"ticket_execution_policies_immutable_update",
+		"ticket_execution_policies_immutable_delete",
+		"ticket_endpoint_consumptions_immutable_update",
+		"ticket_endpoint_consumptions_immutable_delete",
 	} {
 		var count int
 		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name=?`, trigger).Scan(&count); err != nil || count != 1 {
@@ -324,6 +328,8 @@ var requiredCompositeForeignKeys = []compositeForeignKeyRequirement{
 }
 
 var requiredForeignKeys = []foreignKeyRequirement{
+	{table: "ticket_execution_policies", target: "tickets"},
+	{table: "ticket_endpoint_consumptions", target: "tickets"},
 	{table: "provider_phase_entries", target: "tickets"},
 	{table: "provider_phase_attempt_entries", target: "provider_attempts"},
 	{table: "provider_phase_attempt_entries", target: "phase_runs"},
@@ -497,6 +503,8 @@ func sameForeignKeyColumns(actual, expected []foreignKeyColumn) bool {
 }
 
 var requiredSchema = map[string][]string{
+	"ticket_execution_policies":                {"channel", "project_id", "ticket_id", "endpoint", "start_ticket_version", "created_at"},
+	"ticket_endpoint_consumptions":             {"channel", "project_id", "ticket_id", "endpoint", "paused_ticket_version", "consumed_ticket_version", "leader_epoch", "runner_epoch", "publication_witness_digest", "created_at"},
 	"authoring_sessions":                       {"channel", "id", "purpose", "project_id", "capability", "auth_digest", "context_digest", "created_at"},
 	"authoring_turns":                          {"channel", "session_id", "turn_key", "turn", "claim", "state", "launch", "outcome", "result", "created_at", "finished_at"},
 	"postbuild_amendment_checkpoint_snapshots": {"channel", "project_id", "ticket_id", "amendment_transition_version", "ticket_version", "leader_epoch", "runner_epoch", "reviewer_attempt_id", "reviewer_attempt", "reviewer_phase", "reviewer_role", "command_semantic_key", "command_claim_epoch", "full_snapshot_digest", "implementation_digest", "companion_binding_digest", "binding_digest", "created_at"},

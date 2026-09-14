@@ -26,6 +26,8 @@ const (
 	maxCodexPath            = 4096
 	verificationFixtureFile = "sf_fixture_test.go"
 	builderFixtureFile      = "sf_fixture.go"
+	nodeVerificationFile    = "sf_fixture.test.js"
+	nodeBuilderFile         = "sf_fixture.js"
 	takeoverEnteredFile     = ".sf-e2e-takeover-entered"
 )
 
@@ -211,6 +213,10 @@ func runCodexExec(argv []string) error {
 			if err := completeTakeoverBuilderFile(parsed.worktree); err != nil {
 				return err
 			}
+		} else if nodeFixture(string(prompt)) {
+			if err := writeCodexWorktreeFile(parsed.worktree, nodeBuilderFile, []byte("export function softwareFactoryFixture() { return \"ready\"; }\n")); err != nil {
+				return err
+			}
 		} else if err := writeCodexWorktreeFile(parsed.worktree, builderFixtureFile, []byte(`package app
 
 func SoftwareFactoryFixture() string { return "ready" }
@@ -239,6 +245,10 @@ func SoftwareFactoryFixture() string { return "ready" }
 }
 
 func writeCodexVerificationFixture(worktree, prompt string) ([]byte, error) {
+	if nodeFixture(prompt) {
+		content := []byte("import test from 'node:test';\nimport { softwareFactoryFixture } from './sf_fixture.js';\ntest('fixture workflow completes', () => { if (softwareFactoryFixture() !== 'ready') throw new Error('fixture implementation is missing'); });\n")
+		return content, writeCodexWorktreeFile(worktree, nodeVerificationFile, content)
+	}
 	if _, python := pythonFixtureCommand(prompt); python {
 		content := []byte(pythonVerificationSource)
 		return content, writeCodexWorktreeFile(worktree, pythonVerificationFile, content)
@@ -391,6 +401,23 @@ func codexArtifact(role, prompt string, verificationFixture []byte) ([]byte, err
 	_ = decodePromptObject(prompt, "TICKET=", &ticket)
 	ticketType, _ := ticket["type"].(string)
 	proof := proofKind(ticketType)
+	if nodeFixture(prompt) {
+		switch role {
+		case "planner":
+			return json.Marshal(phaseartifact.Planner{Schema: "sf.planner/v1", Acceptance: []string{"fixture workflow completes"}, Proof: phaseartifact.ProofPlan{Kind: proof, Command: []string{"node", "--test"}, Details: "Node fixture proof"}, Paths: []string{nodeVerificationFile, nodeBuilderFile}, Commands: [][]string{{"node", "--test"}}, Risks: []string{"fixture output"}, Questions: []phaseartifact.Question{}})
+		case "verification":
+			if len(verificationFixture) == 0 || len(verificationFixture) > 64<<10 {
+				return nil, errors.New("verification fixture evidence is missing or oversized")
+			}
+			hash := sha256.Sum256(verificationFixture)
+			plan := map[string]any{}
+			_ = decodePromptObject(prompt, "PLAN=", &plan)
+			acceptance, _ := plan["digest"].(string)
+			return json.Marshal(phaseartifact.Verification{Schema: "sf.verification/v1", AcceptanceDigest: acceptance, ProofKind: proof, OwnedFiles: []string{nodeVerificationFile}, Command: []string{"node", "--test"}, PrebuildOutcome: verificationOutcome(proof), EvidenceDigest: hex.EncodeToString(hash[:])})
+		case "builder":
+			return json.Marshal(phaseartifact.Builder{Schema: "sf.builder/v1", Summary: "Node fixture implementation", ChangedFiles: []string{nodeBuilderFile}, Commands: [][]string{{"node", "--test"}}})
+		}
+	}
 	switch role {
 	case "planner":
 		value := phaseartifact.Planner{Schema: "sf.planner/v1", Acceptance: []string{"fixture workflow completes"}, Proof: phaseartifact.ProofPlan{Kind: proof, Command: []string{"go", "test", "./..."}, Details: "fixture proof"}, Paths: []string{verificationFixtureFile, builderFixtureFile}, Commands: [][]string{{"go", "test", "./..."}}, Risks: []string{"fixture output"}, Questions: []phaseartifact.Question{}}
@@ -432,6 +459,10 @@ func codexArtifact(role, prompt string, verificationFixture []byte) ([]byte, err
 	default:
 		return nil, errors.New("unsupported workflow role")
 	}
+}
+
+func nodeFixture(prompt string) bool {
+	return os.Getenv("SF_FAKE_PROVIDER_NODE_FIXTURE") == "1" || strings.Contains(prompt, "SF_E2E_NODE")
 }
 
 func proofKind(ticketType string) phaseartifact.ProofKind {

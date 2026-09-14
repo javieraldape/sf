@@ -1296,6 +1296,39 @@ func TestWorkerReconcilesLostCreateWithoutBlindReplay(t *testing.T) {
 	}
 }
 
+func TestWorkerReconcilesLostCreateBeforePREndpointPause(t *testing.T) {
+	f := newPublicationEndpointFixture(t)
+	defer f.close()
+	if err := f.github.SetResponse("pr_create", testkit.ResponseDropAfterCall); err != nil {
+		t.Fatal(err)
+	}
+	w := publication.Worker{Store: f.db, Git: f.runner, GitHub: f.github}
+	if _, err := w.Run(f.ctx, f.ref, f.fence); !errors.Is(err, githubboundary.ErrCreateUncertain) {
+		t.Fatalf("endpoint lost create err=%v", err)
+	}
+	uncertain, err := f.db.Ticket(f.ctx, f.ref)
+	if err != nil || uncertain.State != domain.StatePublishing || uncertain.BlockedCode != "" {
+		t.Fatalf("endpoint uncertainty advanced ticket=%+v err=%v", uncertain, err)
+	}
+	if got := f.github.MutationCount("pr_create"); got != 1 {
+		t.Fatalf("endpoint lost create mutations=%d", got)
+	}
+	result, err := w.Run(f.ctx, f.ref, f.fence)
+	if err != nil {
+		t.Fatalf("endpoint exact-present reconciliation=%v", err)
+	}
+	paused, err := f.db.Ticket(f.ctx, f.ref)
+	if err != nil || result.State != domain.StatePaused || paused.State != domain.StatePaused || paused.ResumeState != domain.StateWaitingCI || paused.BlockedCode != "pr_opened" {
+		t.Fatalf("endpoint reconciliation result=%+v ticket=%+v err=%v", result, paused, err)
+	}
+	if got := f.github.MutationCount("pr_create"); got != 1 {
+		t.Fatalf("endpoint reconciliation replayed create %d times", got)
+	}
+	if replay, err := w.Run(f.ctx, f.ref, f.fence); err != nil || replay.State != domain.StatePaused || replay.Version != paused.Version || f.github.MutationCount("pr_create") != 1 {
+		t.Fatalf("endpoint paused replay=%+v err=%v creates=%d", replay, err, f.github.MutationCount("pr_create"))
+	}
+}
+
 func TestWorkerRefusesRetryWhileQuarantinedPushLeaseRemains(t *testing.T) {
 	f := newPublicationFixture(t)
 	defer f.close()
@@ -1449,6 +1482,14 @@ func newPublicationFixture(t *testing.T) *publicationFixture {
 }
 
 func newPublicationFixtureMode(t *testing.T, mergeMode domain.MergeMode) *publicationFixture {
+	return newPublicationFixtureModeEndpoint(t, mergeMode, "")
+}
+
+func newPublicationEndpointFixture(t *testing.T) *publicationFixture {
+	return newPublicationFixtureModeEndpoint(t, domain.MergeGuarded, store.ExecutionEndpointPR)
+}
+
+func newPublicationFixtureModeEndpoint(t *testing.T, mergeMode domain.MergeMode, endpoint string) *publicationFixture {
 	t.Helper()
 	ctx := context.Background()
 	root := t.TempDir()
@@ -1520,7 +1561,12 @@ func newPublicationFixtureMode(t *testing.T, mergeMode domain.MergeMode) *public
 		db.Close()
 		t.Fatal(err)
 	}
-	started, err := db.StartOrAdopt(ctx, ref, 1, "e2e", domain.Fence{LeaderEpoch: leader, RunnerEpoch: 1})
+	var started store.Ticket
+	if endpoint == "" {
+		started, err = db.StartOrAdopt(ctx, ref, 1, "e2e", domain.Fence{LeaderEpoch: leader, RunnerEpoch: 1})
+	} else {
+		started, _, err = db.StartWithProjectOwnershipUntil(ctx, ref, 1, domain.Fence{LeaderEpoch: leader, RunnerEpoch: 1}, "e2e", time.Now().UTC(), endpoint)
+	}
 	if err != nil {
 		db.Close()
 		t.Fatal(err)

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -156,6 +157,14 @@ func publicationLifecycleFixture(t *testing.T) (*Store, context.Context, Ticket,
 }
 
 func publicationLifecycleFixtureFor(t *testing.T, ticketType domain.TicketType, mergeMode domain.MergeMode, beforePlanner ...func(*Store, context.Context, Ticket, domain.Fence) Ticket) (*Store, context.Context, Ticket, domain.Fence) {
+	return publicationLifecycleFixtureForEndpoint(t, ticketType, mergeMode, "", beforePlanner...)
+}
+
+func publicationLifecycleEndpointFixture(t *testing.T) (*Store, context.Context, Ticket, domain.Fence) {
+	return publicationLifecycleFixtureForEndpoint(t, domain.TicketFeature, domain.MergeGuarded, ExecutionEndpointPR)
+}
+
+func publicationLifecycleFixtureForEndpoint(t *testing.T, ticketType domain.TicketType, mergeMode domain.MergeMode, endpoint string, beforePlanner ...func(*Store, context.Context, Ticket, domain.Fence) Ticket) (*Store, context.Context, Ticket, domain.Fence) {
 	t.Helper()
 	db, ctx := openTestStore(t)
 	configDigest := setupProviderProject(t, db, ctx)
@@ -168,7 +177,12 @@ func publicationLifecycleFixtureFor(t *testing.T, ticketType domain.TicketType, 
 	if err := db.CreateTicket(ctx, Ticket{Ref: ref, SourceDigest: source, Type: ticketType, MergeMode: mergeMode, CreatedAt: time.Now().UTC(), MaxDuration: time.Hour, MaxCostMicroUSD: 100}); err != nil {
 		t.Fatalf("publication fixture create ticket: %v", err)
 	}
-	ticket, err := db.StartOrAdopt(ctx, ref, 1, "dev/provider/SF-publication-lifecycle", domain.Fence{LeaderEpoch: leader, RunnerEpoch: 1})
+	var ticket Ticket
+	if endpoint == "" {
+		ticket, err = db.StartOrAdopt(ctx, ref, 1, "dev/provider/SF-publication-lifecycle", domain.Fence{LeaderEpoch: leader, RunnerEpoch: 1})
+	} else {
+		ticket, _, err = db.StartWithProjectOwnershipUntil(ctx, ref, 1, domain.Fence{LeaderEpoch: leader, RunnerEpoch: 1}, "dev/provider/SF-publication-lifecycle", time.Now().UTC(), endpoint)
+	}
 	if err != nil {
 		t.Fatalf("publication fixture start or adopt: %v", err)
 	}
@@ -378,6 +392,168 @@ func TestPausedPublishingResumeToWaitingCIAuthenticatesControlLineage(t *testing
 	loaded, err := db.LoadPublishedCandidate(ctx, ticket.Ref)
 	if err != nil || loaded.CurrentTicketVersion != ticket.Version {
 		t.Fatalf("waiting-ci publication=%+v err=%v", loaded, err)
+	}
+}
+
+func TestPublishedCandidateAtomicallyStopsAtFirstPREndpointAndConsumesOnce(t *testing.T) {
+	db, ctx, ticket, fence := publicationLifecycleEndpointFixture(t)
+	recordFixturePublication(t, db, ctx, ticket, fence)
+	transition := Transition{Ref: ticket.Ref, ExpectedVersion: ticket.Version, From: domain.StatePublishing, To: domain.StateWaitingCI, Trigger: "effects_confirmed", Fence: fence}
+	result, err := db.TransitionPublishedCandidate(ctx, transition)
+	if err != nil {
+		t.Fatal(err)
+	}
+	paused, err := db.Ticket(ctx, ticket.Ref)
+	if err != nil || paused.State != domain.StatePaused || paused.ResumeState != domain.StateWaitingCI || paused.BlockedCode != "pr_opened" || paused.Version != ticket.Version+2 || result.Version != paused.Version {
+		t.Fatalf("endpoint pause result=%+v ticket=%+v err=%v", result, paused, err)
+	}
+	if replay, err := db.TransitionPublishedCandidate(ctx, transition); err != nil || replay.Version != paused.Version {
+		t.Fatalf("lost publication response replay=%+v err=%v", replay, err)
+	}
+	resumed, observed, err := db.ResumePREndpoint(ctx, ticket.Ref, paused.Version, fence)
+	if err != nil || observed || resumed.State != domain.StateWaitingCI || resumed.Version != paused.Version+1 {
+		t.Fatalf("endpoint resume ticket=%+v observed=%v err=%v", resumed, observed, err)
+	}
+	if replay, observed, err := db.ResumePREndpoint(ctx, ticket.Ref, paused.Version, fence); err != nil || !observed || replay.Version != resumed.Version {
+		t.Fatalf("lost resume response replay=%+v observed=%v err=%v", replay, observed, err)
+	}
+}
+
+func TestPREndpointSurvivesPausedLeadersAndPostResumeRecovery(t *testing.T) {
+	db, ctx, ticket, fence := publicationLifecycleEndpointFixture(t)
+	recordFixturePublication(t, db, ctx, ticket, fence)
+	if _, err := db.TransitionPublishedCandidate(ctx, Transition{Ref: ticket.Ref, ExpectedVersion: ticket.Version, From: domain.StatePublishing, To: domain.StateWaitingCI, Trigger: "effects_confirmed", Fence: fence}); err != nil {
+		t.Fatal(err)
+	}
+	paused, _ := db.Ticket(ctx, ticket.Ref)
+	leader := fence.LeaderEpoch
+	for i := 0; i < 2; i++ {
+		var err error
+		leader, err = db.AcquireLeader(ctx, domain.ChannelDev, fmt.Sprintf("endpoint-paused-%d", i))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if changed, err := db.FenceRecoveredRunners(ctx, domain.ChannelDev, leader); err != nil || changed != 0 {
+			t.Fatalf("paused startup fence changed=%d err=%v", changed, err)
+		}
+		if err := db.RebindRecoveredPublishedCandidates(ctx, domain.ChannelDev, leader); err != nil {
+			t.Fatalf("paused startup publication recovery: %v", err)
+		}
+		still, _ := db.Ticket(ctx, ticket.Ref)
+		if still.State != domain.StatePaused || still.Version != paused.Version {
+			t.Fatalf("restart resumed endpoint: %+v", still)
+		}
+	}
+	if _, _, err := db.ResumePREndpoint(ctx, ticket.Ref, paused.Version, fence); !errors.Is(err, ErrStaleFence) {
+		t.Fatalf("stale publication leader consumed endpoint: %v", err)
+	}
+	if consumed, err := db.PREndpointConsumed(ctx, ticket.Ref); err != nil || consumed {
+		t.Fatalf("unconsumed endpoint reported consumed=%v err=%v", consumed, err)
+	}
+	resumeFence := domain.Fence{LeaderEpoch: leader, RunnerEpoch: paused.RunnerEpoch}
+	resumed, _, err := db.ResumePREndpoint(ctx, ticket.Ref, paused.Version, resumeFence)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if consumed, err := db.PREndpointConsumed(ctx, ticket.Ref); err != nil || !consumed {
+		t.Fatalf("authenticated endpoint reported consumed=%v err=%v", consumed, err)
+	}
+	if _, err := db.LoadPublishedCandidate(ctx, ticket.Ref); err != nil {
+		t.Fatalf("post-resume publication: %v", err)
+	}
+	if _, err := loadCICurrentPublication(ctx, db.db, ticket.Ref); err != nil {
+		t.Fatalf("post-resume CI publication: %v", err)
+	}
+	for name, statement := range map[string]string{
+		"missing consumption": `DELETE FROM ticket_endpoint_consumptions WHERE channel=? AND project_id=? AND ticket_id=? AND endpoint='pr'`,
+		"wrong leader":        `UPDATE ticket_endpoint_consumptions SET leader_epoch=leader_epoch-1 WHERE channel=? AND project_id=? AND ticket_id=? AND endpoint='pr'`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			if err := os.Chmod(root, 0700); err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(root, "endpoint-ci-tamper.sqlite")
+			if err := db.Backup(ctx, path); err != nil {
+				t.Fatal(err)
+			}
+			mutant, err := Open(ctx, path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer mutant.Close()
+			trigger := "ticket_endpoint_consumptions_immutable_update"
+			if name == "missing consumption" {
+				trigger = "ticket_endpoint_consumptions_immutable_delete"
+			}
+			if _, err := mutant.db.ExecContext(ctx, `DROP TRIGGER `+trigger); err != nil {
+				t.Fatal(err)
+			}
+			if result, err := mutant.db.ExecContext(ctx, statement, ticket.Ref.Channel, ticket.Ref.Project, ticket.Ref.Ticket); err != nil {
+				t.Fatal(err)
+			} else if changed, _ := result.RowsAffected(); changed != 1 {
+				t.Fatalf("tampered endpoint consumptions=%d", changed)
+			}
+			if _, err := loadCICurrentPublication(ctx, mutant.db, ticket.Ref); err == nil {
+				t.Fatal("counterfeit endpoint continuation admitted CI")
+			}
+		})
+	}
+	for name, statement := range map[string]string{
+		"wrong witness": `UPDATE ticket_endpoint_consumptions SET publication_witness_digest='sha256:0000000000000000000000000000000000000000000000000000000000000000' WHERE channel=? AND project_id=? AND ticket_id=? AND endpoint='pr'`,
+		"wrong payload": `UPDATE events SET payload='{}' WHERE channel=? AND project_id=? AND ticket_id=? AND ticket_version=? AND trigger='operator_resume'`,
+	} {
+		t.Run("resume observation "+name, func(t *testing.T) {
+			root := t.TempDir()
+			if err := os.Chmod(root, 0700); err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(root, "endpoint-resume-tamper.sqlite")
+			if err := db.Backup(ctx, path); err != nil {
+				t.Fatal(err)
+			}
+			mutant, err := Open(ctx, path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer mutant.Close()
+			if name == "wrong witness" {
+				if _, err := mutant.db.ExecContext(ctx, `DROP TRIGGER ticket_endpoint_consumptions_immutable_update`); err != nil {
+					t.Fatal(err)
+				}
+			}
+			arguments := []any{ticket.Ref.Channel, ticket.Ref.Project, ticket.Ref.Ticket}
+			if name == "wrong payload" {
+				arguments = append(arguments, resumed.Version)
+			}
+			if result, err := mutant.db.ExecContext(ctx, statement, arguments...); err != nil {
+				t.Fatal(err)
+			} else if changed, _ := result.RowsAffected(); changed != 1 {
+				t.Fatalf("tampered endpoint resume rows=%d", changed)
+			}
+			if consumed, err := mutant.PREndpointConsumed(ctx, ticket.Ref); err == nil || consumed {
+				t.Fatalf("tampered endpoint reported consumed=%v err=%v", consumed, err)
+			}
+			if _, observed, err := mutant.ResumePREndpoint(ctx, ticket.Ref, paused.Version, resumeFence); err == nil || observed {
+				t.Fatalf("tampered endpoint replay observed=%v err=%v", observed, err)
+			}
+		})
+	}
+	nextLeader, err := db.AcquireLeader(ctx, domain.ChannelDev, "endpoint-resumed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := db.FenceRecoveredRunners(ctx, domain.ChannelDev, nextLeader); err != nil || changed != 1 {
+		t.Fatalf("recovery changed=%d err=%v", changed, err)
+	}
+	if _, err := db.LoadPublishedCandidate(ctx, ticket.Ref); err != nil {
+		t.Fatalf("post-recovery publication: %v (resumed=%+v)", err, resumed)
+	}
+	if _, err := loadCICurrentPublication(ctx, db.db, ticket.Ref); err != nil {
+		t.Fatalf("post-recovery CI publication: %v (resumed=%+v)", err, resumed)
+	}
+	if consumed, err := db.PREndpointConsumed(ctx, ticket.Ref); err != nil || !consumed {
+		t.Fatalf("post-recovery endpoint reported consumed=%v err=%v", consumed, err)
 	}
 }
 

@@ -55,6 +55,10 @@ func (a *app) ticketStartCommand() *cobra.Command {
 		if err := existing.Flags().Set("accept-cost-estimates", fmt.Sprint(estimates)); err != nil {
 			return err
 		}
+		until, _ := cmd.Flags().GetString("until")
+		if err := existing.Flags().Set("until", until); err != nil {
+			return err
+		}
 		if err := existing.RunE(cmd, args); err != nil {
 			return err
 		}

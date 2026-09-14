@@ -89,6 +89,34 @@ func TestRunEstimateConsentIsExplicitAndOnlySentToQueuedStart(t *testing.T) {
 	}
 }
 
+func TestRunUntilPRIsStartOnlyAndInvalidValueMutatesNothing(t *testing.T) {
+	calls := 0
+	response, _ := executeRunTest(t, fakeClient(func(_ context.Context, request api.Request) (api.Response, error) {
+		calls++
+		var parameters map[string]any
+		_ = json.Unmarshal(request.Parameters, &parameters)
+		if request.Method == "ticket.submit" {
+			if _, found := parameters["until"]; found {
+				t.Fatal("endpoint leaked into submission")
+			}
+			return runTestResponse(domain.StateQueued, "ticket_submit", false), nil
+		}
+		if parameters["until"] != "pr" {
+			t.Fatalf("start endpoint=%v", parameters["until"])
+		}
+		return runTestResponse(domain.StatePlanning, "ticket_start", false), nil
+	}), false, "--until", "pr")
+	if !response.OK || calls != 2 {
+		t.Fatalf("response=%+v calls=%d", response, calls)
+	}
+
+	calls = 0
+	response, _ = executeRunTest(t, fakeClient(func(context.Context, api.Request) (api.Response, error) { calls++; return api.Response{}, nil }), false, "--until", "merge")
+	if response.OK || response.Error == nil || response.Error.Code != "invalid_until" || calls != 0 {
+		t.Fatalf("invalid response=%+v calls=%d", response, calls)
+	}
+}
+
 func TestRunComposesExactSubmitStartWatch(t *testing.T) {
 	calls := []string{}
 	response, output := executeRunTest(t, fakeClient(func(_ context.Context, request api.Request) (api.Response, error) {

@@ -305,6 +305,55 @@ func TestRuntimePoolOneWorkerLimitsConcurrentTickets(t *testing.T) {
 	}
 }
 
+func TestRuntimePoolThreeWorkersOverlapAndDrainOnlyTarget(t *testing.T) {
+	refs := []domain.TicketRef{
+		{Channel: domain.ChannelDev, Project: "p", Ticket: "a"},
+		{Channel: domain.ChannelDev, Project: "p", Ticket: "b"},
+		{Channel: domain.ChannelDev, Project: "p", Ticket: "c"},
+	}
+	worker := newPoolBlockingWorker()
+	scheduler := NewScheduler(domain.ChannelDev, fakeTickets{tickets: []store.Ticket{
+		ticket(refs[0], domain.StatePlanning), ticket(refs[1], domain.StatePlanning), ticket(refs[2], domain.StatePlanning),
+	}}, poolEnsure{}, worker)
+	runtime, err := NewRuntimeWithConfig(scheduler, RuntimeConfig{Interval: time.Hour, Workers: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Start(t.Context(), domain.Fence{LeaderEpoch: 17}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = runtime.Close() })
+	requireWorkerRefs(t, worker.entered, refs...)
+	calls, active, maxActive := worker.snapshot()
+	if len(active) != 3 || maxActive != 3 {
+		t.Fatalf("three-way overlap missing: active=%v max=%d", active, maxActive)
+	}
+	for _, ref := range refs {
+		if calls[ref] != 1 {
+			t.Fatalf("duplicate/missing invocation: %v", calls)
+		}
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+	if err := runtime.ControlBundle().Drain(ctx, refs[1]); err != nil {
+		t.Fatal(err)
+	}
+	requireWorkerRefs(t, worker.exited, refs[1])
+	_, active, _ = worker.snapshot()
+	if len(active) != 2 {
+		t.Fatalf("target drain changed sibling activity: %v", active)
+	}
+	for _, ref := range []domain.TicketRef{refs[0], refs[2]} {
+		if _, ok := active[ref]; !ok {
+			t.Fatalf("sibling was drained: %v", ref)
+		}
+	}
+	if err := runtime.Close(); err != nil {
+		t.Fatal(err)
+	}
+	requireWorkerRefs(t, worker.exited, refs[0], refs[2])
+}
+
 func TestRuntimePoolNeverDoubleAdmitsSameTicket(t *testing.T) {
 	ref := domain.TicketRef{Channel: domain.ChannelDev, Project: "p", Ticket: "SF-pool-duplicate"}
 	worker := newPoolBlockingWorker()
@@ -361,7 +410,7 @@ func TestRuntimePoolCloseJoinsEveryLoop(t *testing.T) {
 
 func TestRuntimePoolRejectsInvalidWorkerCounts(t *testing.T) {
 	scheduler := NewScheduler(domain.ChannelDev, fakeTickets{}, &fakeEnsure{}, &fakeWorker{})
-	for _, workers := range []int{0, 3} {
+	for _, workers := range []int{0, 4} {
 		if runtime, err := NewRuntimeWithConfig(scheduler, RuntimeConfig{Interval: time.Second, Workers: workers}); !errors.Is(err, ErrRuntimeWorkers) || runtime != nil {
 			t.Fatalf("workers=%d runtime=%v err=%v", workers, runtime, err)
 		}

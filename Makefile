@@ -82,7 +82,7 @@ test-upgrade:
 # The compiled walking skeleton is tagged because it builds and exercises the
 # Darwin guarded runtime. The test itself skips on non-Darwin hosts.
 test-compiled-e2e:
-	go test -count=1 -shuffle=off -p 1 -timeout 30m -tags sf_e2e ./cmd/sf -run '^(TestCompiledDev(GuardedWalkingSkeleton|ManualWalkingSkeleton|FriendlyOperatorTakeover)|TestCompiledStableAndDevDaemonsCoexist)$$'
+	go test -count=1 -shuffle=off -p 1 -timeout 30m -tags sf_e2e ./cmd/sf -run '^(TestCompiledDev(GuardedWalkingSkeleton|ManualWalkingSkeleton|FriendlyOperatorTakeover|PREndpointWalkingSkeleton|NodePREndpointWalkingSkeleton)|TestCompiledStableAndDevDaemonsCoexist|TestCompiledCleanStateReadinessRefusalsAndOfflineStacks)$$'
 
 # Explicit public-download acceptance; never silently pass by skipping on CI.
 .PHONY: test-python-e2e
@@ -97,18 +97,19 @@ test-compiled: test-compiled-e2e
 # readable verification gates without running that complete suite again.
 # Static/repository/release checks are part of the same claimed final gate.
 # Without SF_CI_LANE this is the complete serialized local path. Hosted CI
-# distributes the same gates across isolated runners, including all eight
-# disjoint Store, other-package and workflowruntime race shards;
+# distributes the same gates across isolated runners, including ten Store,
+# two daemon, four other-package and five workflowruntime race shards;
 # one lane alone is NOT complete acceptance.
 # Each lane keeps the existing per-package bounds.
 test-all:
 	@case "$${SF_CI_LANE:-}" in \
 	  '') python3 scripts/run-bounded --timeout 120m -- $(MAKE) --no-print-directory -j1 test-race test-integration test-crash test-security test-upgrade test-compiled-e2e verify-static ;; \
 	  race-other) python3 scripts/run-bounded --timeout 65m -- python3 scripts/ci-race.py other --index "$$SHARD" --count 4 ;; \
-	  runtime-race) python3 scripts/run-bounded --timeout 65m -- python3 scripts/ci-race.py runtime-race --index "$$SHARD" --count 4 ;; \
+	  daemon-race) python3 scripts/run-bounded --timeout 65m -- python3 scripts/ci-race.py daemon-race --index "$$SHARD" --count 2 ;; \
+	  runtime-race) python3 scripts/run-bounded --timeout 65m -- python3 scripts/ci-race.py runtime-race --index "$$SHARD" --count 5 ;; \
 	  crash-runtime) python3 scripts/run-bounded --timeout 40m -- python3 scripts/ci-race.py crash-runtime --index "$$SHARD" --count 4 ;; \
 	  crash-other) python3 scripts/run-bounded --timeout 40m -- python3 scripts/ci-race.py crash-other ;; \
-	  store-race) python3 scripts/run-bounded --timeout 65m -- python3 scripts/ci-race.py store --index "$$SHARD" --count 8 ;; \
+	  store-race) python3 scripts/run-bounded --timeout 65m -- python3 scripts/ci-race.py store --index "$$SHARD" --count 10 ;; \
 	  runtime-integration) python3 scripts/run-bounded --timeout 40m -- python3 scripts/ci-race.py runtime-integration --index "$$SHARD" --count 4 ;; \
 	  test-integration|test-integration-other|test-crash|test-security|test-upgrade|test-compiled-e2e|verify-static) python3 scripts/run-bounded --timeout 80m -- $(MAKE) --no-print-directory "$$SF_CI_LANE" ;; \
 	  *) echo 'unknown CI acceptance lane' >&2; exit 2 ;; \

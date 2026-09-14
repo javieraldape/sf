@@ -1171,6 +1171,25 @@ func (s *Store) TransitionPublishedCandidate(ctx context.Context, transition Tra
 			result.Version, result.EventID = version, eventID
 			return nil
 		}
+		if state == domain.StatePaused && version == transition.ExpectedVersion+2 {
+			if runner != value.CurrentFence.RunnerEpoch || transition.Fence != value.CurrentFence {
+				return ErrStaleFence
+			}
+			if err := authenticatePublishedWaitingEvent(ctx, conn, transition.Ref, value, transition.ExpectedVersion+1); err != nil {
+				return err
+			}
+			var resume domain.State
+			var blocked string
+			if err := conn.QueryRowContext(ctx, `SELECT COALESCE(resume_state,''),blocked_code FROM tickets WHERE channel=? AND project_id=? AND id=?`, transition.Ref.Channel, transition.Ref.Project, transition.Ref.Ticket).Scan(&resume, &blocked); err != nil || resume != domain.StateWaitingCI || blocked != "pr_opened" {
+				return ErrPublicationEvidence
+			}
+			var count int
+			if err := conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM events WHERE channel=? AND project_id=? AND ticket_id=? AND ticket_version=? AND trigger='endpoint_reached' AND from_state='waiting_ci' AND to_state='paused'`, transition.Ref.Channel, transition.Ref.Project, transition.Ref.Ticket, version).Scan(&count); err != nil || count != 1 {
+				return ErrPublicationEvidence
+			}
+			result.Version = version
+			return nil
+		}
 		if state != domain.StatePublishing || version != transition.ExpectedVersion || version != value.CurrentTicketVersion || runner != value.CurrentFence.RunnerEpoch {
 			return ErrStaleFence
 		}
@@ -1198,6 +1217,34 @@ func (s *Store) TransitionPublishedCandidate(ctx context.Context, transition Tra
 		}
 		result.Version = version + 1
 		result.EventID, _ = event.LastInsertId()
+		endpoint, err := hasUnconsumedPREndpoint(ctx, conn, transition.Ref)
+		if err != nil {
+			return err
+		}
+		if endpoint {
+			pauseVersion := version + 2
+			prURL := fmt.Sprintf("https://github.com/%s/%s/pull/%d", value.PullRequest.Repository.Owner, value.PullRequest.Repository.Name, value.PullRequest.Number)
+			endpointPayload, _ := json.Marshal(map[string]string{"endpoint": "pr", "reason": "pr_opened", "pr_url": prURL, "head": value.Candidate.Snapshot.HeadSHA, "witness_digest": value.WitnessDigest})
+			updated, err := conn.ExecContext(ctx, `UPDATE tickets SET state='paused',resume_state='waiting_ci',blocked_code='pr_opened',version=? WHERE channel=? AND project_id=? AND id=? AND state='waiting_ci' AND version=? AND runner_epoch=?`, pauseVersion, transition.Ref.Channel, transition.Ref.Project, transition.Ref.Ticket, version+1, runner)
+			if err != nil {
+				return err
+			}
+			if n, _ := updated.RowsAffected(); n != 1 {
+				return ErrStaleFence
+			}
+			// The endpoint is an operator stop, not a runnable wait. Release its
+			// admission capacity before paused becomes visible so another ticket
+			// can progress; explicit continuation reacquires it transactionally.
+			if _, err := conn.ExecContext(ctx, `DELETE FROM leases WHERE channel=? AND project_id=? AND ticket_id=? AND runner_epoch=?`, transition.Ref.Channel, transition.Ref.Project, transition.Ref.Ticket, runner); err != nil {
+				return err
+			}
+			pausedEvent, err := conn.ExecContext(ctx, `INSERT INTO events(channel,project_id,ticket_id,ticket_version,trigger,from_state,to_state,payload,created_at) VALUES(?,?,?,?,?,?,?,?,?)`, transition.Ref.Channel, transition.Ref.Project, transition.Ref.Ticket, pauseVersion, "endpoint_reached", domain.StateWaitingCI, domain.StatePaused, string(endpointPayload), created)
+			if err != nil {
+				return err
+			}
+			result.Version = pauseVersion
+			result.EventID, _ = pausedEvent.LastInsertId()
+		}
 		return nil
 	})
 	return result, err
@@ -1850,7 +1897,11 @@ func (s *Store) LoadPublishedCandidate(ctx context.Context, ref domain.TicketRef
 	if err := rejectFutureRunnerRecoveryRows(ctx, s.db, ref, ticket.Version); err != nil {
 		return PublishedCandidateEvidence{}, ErrPublicationEvidence
 	}
-	waitingReplay := ticket.State == domain.StateWaitingCI
+	endpointPaused, endpointErr := s.IsPREndpointPaused(ctx, ticket)
+	if endpointErr != nil {
+		return PublishedCandidateEvidence{}, ErrPublicationEvidence
+	}
+	waitingReplay := ticket.State == domain.StateWaitingCI || endpointPaused
 	// A pending CI observation is a real, authenticated same-state transition.
 	// The generic publication reader predates that chain and deliberately
 	// rejects additional events at the publication->waiting_ci version.  Prefer
@@ -1868,6 +1919,7 @@ func (s *Store) LoadPublishedCandidate(ctx context.Context, ref domain.TicketRef
 	blockedPublishingReplay := false
 	blockedWaitingReplay := false
 	waitingPairRecovery := false
+	endpointWaitingReplay := false
 	if ticket.State == domain.StatePublishing && ticket.Version != value.CurrentTicketVersion {
 		if ticket.Version != value.CurrentTicketVersion+2 || ticket.RunnerEpoch != value.CurrentFence.RunnerEpoch {
 			return PublishedCandidateEvidence{}, ErrPublicationEvidence
@@ -1888,8 +1940,13 @@ func (s *Store) LoadPublishedCandidate(ctx context.Context, ref domain.TicketRef
 		if value.CurrentTicketVersion == ^uint64(0) || ticket.Version < waitingVersion || ticket.RunnerEpoch < value.CurrentFence.RunnerEpoch {
 			return PublishedCandidateEvidence{}, ErrPublicationEvidence
 		}
-		if ticket.Version == waitingVersion {
+		if endpointPaused && ticket.Version == waitingVersion+1 && ticket.RunnerEpoch == value.CurrentFence.RunnerEpoch {
+			semanticWaitingReplay = true
+		} else if ticket.Version == waitingVersion {
 			// Ordinary publishing -> waiting_ci replay.
+		} else if ticket.Version == waitingVersion+2 && authenticatePREndpointResume(ctx, s.db, ref, ticket.Version) == nil {
+			semanticWaitingReplay = true
+			endpointWaitingReplay = true
 		} else if ticket.Version == waitingVersion+2 && authenticateBlockedPublicationResume(ctx, s.db, ref, waitingVersion+1, ticket.Version, domain.StateWaitingCI, domain.StateWaitingCI) == nil {
 			blockedWaitingReplay = true
 		} else if ticket.Version == waitingVersion+2 && authenticateSemanticPublicationResume(ctx, s.db, ref, waitingVersion+1, ticket.Version, domain.StateWaitingCI) == nil {
@@ -1906,7 +1963,8 @@ func (s *Store) LoadPublishedCandidate(ctx context.Context, ref domain.TicketRef
 		}
 		if !blockedWaitingReplay && !semanticWaitingReplay && waitingVersion <= ^uint64(0)-3 && ticket.Version >= waitingVersion+3 &&
 			(authenticateBlockedPublicationResume(ctx, s.db, ref, waitingVersion+1, waitingVersion+2, domain.StateWaitingCI, domain.StateWaitingCI) == nil ||
-				authenticateSemanticPublicationResume(ctx, s.db, ref, waitingVersion+1, waitingVersion+2, domain.StateWaitingCI) == nil) {
+				authenticateSemanticPublicationResume(ctx, s.db, ref, waitingVersion+1, waitingVersion+2, domain.StateWaitingCI) == nil ||
+				authenticatePREndpointResume(ctx, s.db, ref, waitingVersion+2) == nil) {
 			waitingPairRecovery = true
 		}
 	}
@@ -1946,11 +2004,20 @@ func (s *Store) LoadPublishedCandidate(ctx context.Context, ref domain.TicketRef
 		// chain and any signed runner-recovery rows to the live leader.
 	} else if waitingReplay {
 		baselineVersion, baselineRunner, baselineLeader := waitingVersion, value.CurrentFence.RunnerEpoch, value.CurrentFence.LeaderEpoch
-		if waitingPairRecovery {
+		if endpointWaitingReplay {
+			endpointFence, err := prEndpointResumeFence(ctx, s.db, ref, ticket.Version)
+			if err != nil {
+				return PublishedCandidateEvidence{}, err
+			}
+			baselineVersion, baselineRunner, baselineLeader = ticket.Version, endpointFence.RunnerEpoch, endpointFence.LeaderEpoch
+		} else if waitingPairRecovery {
 			baselineVersion += 2
+			if endpointFence, err := prEndpointResumeFence(ctx, s.db, ref, baselineVersion); err == nil {
+				baselineRunner, baselineLeader = endpointFence.RunnerEpoch, endpointFence.LeaderEpoch
+			}
 		}
 		if ticket.RunnerEpoch == baselineRunner {
-			if leader != value.CurrentFence.LeaderEpoch {
+			if leader != baselineLeader {
 				return PublishedCandidateEvidence{}, ErrStaleFence
 			}
 		} else if validateRunnerRecoveryLedger(ctx, s.db, ref, baselineVersion, baselineRunner, baselineLeader, ticket.Version, ticket.RunnerEpoch, leader) != nil {
@@ -1965,6 +2032,9 @@ func (s *Store) LoadPublishedCandidate(ctx context.Context, ref domain.TicketRef
 		baselineVersion, baselineRunner, baselineLeader := waitingVersion, value.CurrentFence.RunnerEpoch, value.CurrentFence.LeaderEpoch
 		if waitingPairRecovery {
 			baselineVersion += 2
+			if endpointFence, fenceErr := prEndpointResumeFence(ctx, s.db, ref, baselineVersion); fenceErr == nil {
+				baselineRunner, baselineLeader = endpointFence.RunnerEpoch, endpointFence.LeaderEpoch
+			}
 		}
 		if err := validateRunnerRecoveryLedger(ctx, s.db, ref, baselineVersion, baselineRunner, baselineLeader, ticket.Version, ticket.RunnerEpoch, leader); err != nil {
 			return PublishedCandidateEvidence{}, err

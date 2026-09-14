@@ -937,7 +937,17 @@ func (s *Store) StartWithOwnership(ctx context.Context, ref domain.TicketRef, ex
 // earlier generation); it can never mix generation N+1 with generation N's
 // capacity.
 func (s *Store) StartWithProjectOwnership(ctx context.Context, ref domain.TicketRef, expectedVersion uint64, fence domain.Fence, workflowID string, at time.Time) (Ticket, bool, error) {
-	return s.startWithProjectOwnership(ctx, ref, expectedVersion, fence, workflowID, at, nil)
+	return s.startWithProjectOwnership(ctx, ref, expectedVersion, fence, workflowID, at, nil, "")
+}
+
+// StartWithProjectOwnershipUntil persists an opt-in execution endpoint in the
+// same transaction that first admits the queued ticket. Empty preserves the
+// historical full lifecycle.
+func (s *Store) StartWithProjectOwnershipUntil(ctx context.Context, ref domain.TicketRef, expectedVersion uint64, fence domain.Fence, workflowID string, at time.Time, endpoint string) (Ticket, bool, error) {
+	if endpoint != "" && endpoint != ExecutionEndpointPR {
+		return Ticket{}, false, ErrStartState
+	}
+	return s.startWithProjectOwnership(ctx, ref, expectedVersion, fence, workflowID, at, nil, endpoint)
 }
 
 // StartWithCheckedProjectOwnership binds an external, read-only readiness
@@ -950,10 +960,21 @@ func (s *Store) StartWithCheckedProjectOwnership(ctx context.Context, ref domain
 		return Ticket{}, false, ErrStartConfigurationChanged
 	}
 	checked.ConfigSnapshot = append([]byte(nil), checked.ConfigSnapshot...)
-	return s.startWithProjectOwnership(ctx, ref, expectedVersion, fence, workflowID, at, &checked)
+	return s.startWithProjectOwnership(ctx, ref, expectedVersion, fence, workflowID, at, &checked, "")
 }
 
-func (s *Store) startWithProjectOwnership(ctx context.Context, ref domain.TicketRef, expectedVersion uint64, fence domain.Fence, workflowID string, at time.Time, checked *Project) (Ticket, bool, error) {
+func (s *Store) StartWithCheckedProjectOwnershipUntil(ctx context.Context, ref domain.TicketRef, expectedVersion uint64, fence domain.Fence, workflowID string, at time.Time, checked Project, endpoint string) (Ticket, bool, error) {
+	if checked.Channel != ref.Channel || checked.ID != ref.Project {
+		return Ticket{}, false, ErrStartConfigurationChanged
+	}
+	if endpoint != "" && endpoint != ExecutionEndpointPR {
+		return Ticket{}, false, ErrStartState
+	}
+	checked.ConfigSnapshot = append([]byte(nil), checked.ConfigSnapshot...)
+	return s.startWithProjectOwnership(ctx, ref, expectedVersion, fence, workflowID, at, &checked, endpoint)
+}
+
+func (s *Store) startWithProjectOwnership(ctx context.Context, ref domain.TicketRef, expectedVersion uint64, fence domain.Fence, workflowID string, at time.Time, checked *Project, endpoint string) (Ticket, bool, error) {
 	if err := ref.Validate(); err != nil {
 		return Ticket{}, false, err
 	}
@@ -969,7 +990,7 @@ func (s *Store) startWithProjectOwnership(ctx context.Context, ref domain.Ticket
 	if hook != nil {
 		hook()
 	}
-	return s.startWithOwnership(ctx, ref, expectedVersion, fence, workflowID, at, func(ctx context.Context, conn *sql.Conn) (startAdmission, error) {
+	result, observed, err := s.startWithOwnership(ctx, ref, expectedVersion, fence, workflowID, at, func(ctx context.Context, conn *sql.Conn) (startAdmission, error) {
 		project, err := loadCurrentProjectConfiguration(ctx, conn, ref.Channel, ref.Project)
 		if err != nil {
 			return startAdmission{}, err
@@ -990,10 +1011,15 @@ func (s *Store) startWithProjectOwnership(ctx context.Context, ref domain.Ticket
 			return startAdmission{requests: requests}, nil
 		}
 		return startAdmission{requests: requests, project: &project}, nil
-	})
+	}, endpoint)
+	return result, observed, err
 }
 
-func (s *Store) startWithOwnership(ctx context.Context, ref domain.TicketRef, expectedVersion uint64, fence domain.Fence, workflowID string, at time.Time, resolve func(context.Context, *sql.Conn) (startAdmission, error)) (Ticket, bool, error) {
+func (s *Store) startWithOwnership(ctx context.Context, ref domain.TicketRef, expectedVersion uint64, fence domain.Fence, workflowID string, at time.Time, resolve func(context.Context, *sql.Conn) (startAdmission, error), endpoints ...string) (Ticket, bool, error) {
+	endpoint := ""
+	if len(endpoints) > 0 {
+		endpoint = endpoints[0]
+	}
 	observed := false
 	err := s.write(ctx, func(conn *sql.Conn) error {
 		var state domain.State
@@ -1011,6 +1037,13 @@ func (s *Store) startWithOwnership(ctx context.Context, ref domain.TicketRef, ex
 		if state == domain.StatePlanning {
 			if version != expectedVersion || persistedWorkflow != workflowID {
 				return ErrStaleFence
+			}
+			var persisted string
+			if err := conn.QueryRowContext(ctx, `SELECT endpoint FROM ticket_execution_policies WHERE channel=? AND project_id=? AND ticket_id=?`, ref.Channel, ref.Project, ref.Ticket).Scan(&persisted); err != nil && !errors.Is(err, sql.ErrNoRows) {
+				return err
+			}
+			if persisted != endpoint {
+				return ErrStartState
 			}
 			observed = true
 		} else {
@@ -1075,6 +1108,11 @@ func (s *Store) startWithOwnership(ctx context.Context, ref domain.TicketRef, ex
 			}
 			if err := recordRunnerStartAuthority(ctx, conn, ref, version, fence, workflowID, createdAt); err != nil {
 				return err
+			}
+			if endpoint != "" {
+				if _, err := conn.ExecContext(ctx, `INSERT INTO ticket_execution_policies(channel,project_id,ticket_id,endpoint,start_ticket_version,created_at) VALUES(?,?,?,?,?,?)`, ref.Channel, ref.Project, ref.Ticket, endpoint, version, createdAt); err != nil {
+					return err
+				}
 			}
 		}
 		return nil

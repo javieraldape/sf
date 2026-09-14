@@ -15,8 +15,8 @@ func TestConfiguredProviderCapacityIsExactAndFailClosed(t *testing.T) {
 		want  int
 		ok    bool
 	}{
-		{"", 1, true}, {"1", 1, true}, {"2", 2, true},
-		{" 2", 0, false}, {"2 ", 0, false}, {"0", 0, false}, {"3", 0, false}, {"two", 0, false},
+		{"", 1, true}, {"1", 1, true}, {"2", 2, true}, {"3", 3, true},
+		{" 2", 0, false}, {"2 ", 0, false}, {"0", 0, false}, {"4", 0, false}, {"two", 0, false},
 	} {
 		t.Run(test.value, func(t *testing.T) {
 			t.Setenv("SF_CODEX_PROVIDER_CAPACITY", test.value)
@@ -60,7 +60,7 @@ func TestComposeProfilesWithCapacityPropagatesSharedRouteCapacity(t *testing.T) 
 	coordinator, err := ComposeProfilesWithCapacity(ctx, domain.ChannelDev, database, supervisor, []Config{
 		{Route: builder.route, Executable: builder.executable, AuthHome: builder.authHome, Model: builder.model, Runner: builder.runner},
 		{Route: reviewer.route, Executable: reviewer.executable, AuthHome: reviewer.authHome, Model: reviewer.model, Runner: reviewer.runner},
-	}, 2)
+	}, 3)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,8 +68,8 @@ func TestComposeProfilesWithCapacityPropagatesSharedRouteCapacity(t *testing.T) 
 	if err := coordinator.ReadyForPrePublishing(); err != nil {
 		t.Fatalf("qualified composition not ready: %v", err)
 	}
-	for role, route := range composeRoutes(builder.Name(), reviewer.Name(), 2) {
-		if route.Capacity != 2 || route.Primary == "" {
+	for role, route := range composeRoutes(builder.Name(), reviewer.Name(), 3) {
+		if route.Capacity != 3 || route.Primary == "" {
 			t.Fatalf("route %s=%+v", role, route)
 		}
 	}
@@ -78,7 +78,7 @@ func TestComposeProfilesWithCapacityPropagatesSharedRouteCapacity(t *testing.T) 
 			t.Fatalf("default route %s=%+v", role, route)
 		}
 	}
-	for _, capacity := range []int{0, 3} {
+	for _, capacity := range []int{0, 4} {
 		if _, err := ComposeProfilesWithCapacity(ctx, domain.ChannelDev, database, supervisor, nil, capacity); err == nil {
 			t.Fatalf("capacity %d accepted", capacity)
 		}

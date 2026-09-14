@@ -21,7 +21,7 @@ var (
 
 const (
 	maxRuntimeInterval = time.Hour
-	maxRuntimeWorkers  = 2
+	maxRuntimeWorkers  = 3
 )
 
 // Runtime is a daemon-neutral lifecycle wrapper around the one-tick

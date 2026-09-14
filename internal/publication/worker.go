@@ -79,6 +79,11 @@ func (w Worker) Run(ctx context.Context, ref domain.TicketRef, fence domain.Fenc
 	if ticket.State == domain.StateWaitingCI {
 		return result, nil
 	}
+	if paused, pauseErr := w.Store.IsPREndpointPaused(ctx, ticket); pauseErr != nil {
+		return result, pauseErr
+	} else if paused {
+		return result, nil
+	}
 	if ticket.State != domain.StatePublishing || ticket.RunnerEpoch != fence.RunnerEpoch {
 		return result, ErrNotPublishing
 	}
@@ -104,7 +109,11 @@ func (w Worker) Run(ctx context.Context, ref domain.TicketRef, fence domain.Fenc
 		if _, err := w.Store.TransitionPublishedCandidate(ctx, store.Transition{Ref: ref, ExpectedVersion: ticket.Version, From: domain.StatePublishing, To: domain.StateWaitingCI, Trigger: "effects_confirmed", Fence: fence}); err != nil {
 			return result, err
 		}
-		result.State, result.Version, result.Transitioned, result.Replayed = domain.StateWaitingCI, ticket.Version+1, true, true
+		committed, err := w.Store.Ticket(ctx, ref)
+		if err != nil {
+			return result, err
+		}
+		result.State, result.Version, result.Transitioned, result.Replayed = committed.State, committed.Version, true, true
 		return result, nil
 	} else if !errors.Is(err, store.ErrNotFound) {
 		// A valid witness for an earlier candidate is retained across a bounded
@@ -199,7 +208,11 @@ func (w Worker) Run(ctx context.Context, ref domain.TicketRef, fence domain.Fenc
 	if _, err := w.Store.TransitionPublishedCandidate(ctx, store.Transition{Ref: ref, ExpectedVersion: ticket.Version, From: domain.StatePublishing, To: domain.StateWaitingCI, Trigger: "effects_confirmed", Fence: fence}); err != nil {
 		return result, fmt.Errorf("transition published candidate: %w", err)
 	}
-	result.State, result.Version, result.Transitioned = domain.StateWaitingCI, ticket.Version+1, true
+	committed, err := w.Store.Ticket(ctx, ref)
+	if err != nil {
+		return result, err
+	}
+	result.State, result.Version, result.Transitioned = committed.State, committed.Version, true
 	return result, nil
 }
 

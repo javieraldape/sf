@@ -165,6 +165,19 @@ func TestSchedulerIgnoresQueuedAndInvokesOneStableFirstTicket(t *testing.T) {
 	}
 }
 
+func TestSchedulerDoesNotPollPausedPREndpointAndRunsAnotherTicket(t *testing.T) {
+	paused := ticket(domain.TicketRef{Channel: domain.ChannelDev, Project: "a", Ticket: "endpoint"}, domain.StatePaused)
+	paused.ResumeState = domain.StateWaitingCI
+	paused.BlockedCode = "pr_opened"
+	other := ticket(domain.TicketRef{Channel: domain.ChannelDev, Project: "b", Ticket: "other"}, domain.StatePlanning)
+	ensurer := &fakeEnsure{}
+	worker := &fakeWorker{}
+	result := NewScheduler(domain.ChannelDev, fakeTickets{tickets: []store.Ticket{paused, other}}, ensurer, worker).Tick(context.Background(), domain.Fence{LeaderEpoch: 9})
+	if result.Outcome != OutcomeInvoked || len(worker.calls) != 1 || worker.calls[0] != other.Ref || len(ensurer.calls) != 1 || ensurer.calls[0].Ref != other.Ref {
+		t.Fatalf("result=%+v worker=%v ensure=%v", result, worker.calls, ensurer.calls)
+	}
+}
+
 func TestSchedulerInvokesReviewingTicket(t *testing.T) {
 	reviewing := ticket(domain.TicketRef{Channel: domain.ChannelDev, Project: "a", Ticket: "review"}, domain.StateReviewing)
 	ensurer := &fakeEnsure{}

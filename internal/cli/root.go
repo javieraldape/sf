@@ -287,14 +287,22 @@ func (a *app) submitCommand() *cobra.Command {
 
 func (a *app) startCommand() *cobra.Command {
 	var estimates bool
+	var until string
 	command := &cobra.Command{Use: "start <ticket>", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		if until != "" && until != "pr" {
+			return a.emit(failure("invalid_until", "--until accepts only pr", commandHelpAction(cmd)))
+		}
 		values := map[string]any{}
 		if estimates {
 			values["accept_cost_estimates"] = true
 		}
+		if until != "" {
+			values["until"] = until
+		}
 		return a.emit(a.request("ticket.start", args[0], params(values, a.channel)))
 	}}
 	command.Flags().BoolVar(&estimates, "accept-cost-estimates", false, "accept estimated (not verified) costs with time/request limits; not a hard dollar cap")
+	command.Flags().StringVar(&until, "until", "", "stop after the first draft PR handoff (pr)")
 	return command
 }
 

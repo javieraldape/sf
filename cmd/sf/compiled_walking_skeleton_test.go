@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -20,6 +21,7 @@ import (
 	"github.com/nysa-company/sf/internal/config"
 	"github.com/nysa-company/sf/internal/contracts"
 	"github.com/nysa-company/sf/internal/domain"
+	"github.com/nysa-company/sf/internal/processsupervisor"
 	"github.com/nysa-company/sf/internal/store"
 	"github.com/nysa-company/sf/internal/testkit"
 )
@@ -36,6 +38,40 @@ func TestCompiledDevGuardedWalkingSkeleton(t *testing.T) {
 // simulated human merge. The factory must never mark ready or call merge.
 func TestCompiledDevManualWalkingSkeleton(t *testing.T) {
 	compiledDevWalkingSkeleton(t, domain.MergeManual)
+}
+
+// TestCompiledDevPREndpointWalkingSkeleton proves the first-PR handoff is a
+// durable pause. The endpoint branch intentionally stops before CI observation,
+// review, ready, or merge effects; recovery is checked after a daemon restart.
+func TestCompiledDevPREndpointWalkingSkeleton(t *testing.T) {
+	t.Setenv("SF_TEST_UNTIL_PR", "1")
+	compiledDevWalkingSkeleton(t, domain.MergeGuarded)
+}
+
+func TestCompiledDevNodePREndpointWalkingSkeleton(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("compiled Node acceptance requires the native macOS runtime")
+	}
+	// Fail at the actual runtime prerequisite rather than waiting for a ticket
+	// whose authenticated Node command cannot launch. This uses the production
+	// resolver/stager, not PATH or an unsandboxed substitute runtime.
+	if _, _, err := processsupervisor.RepositoryCommandExecutableIdentity([]string{"node", "--test"}); err != nil {
+		for _, candidate := range []string{"/opt/homebrew/bin/node", "/usr/local/bin/node"} {
+			resolved, resolveErr := filepath.EvalSymlinks(candidate)
+			if resolveErr != nil {
+				t.Logf("Node runtime candidate unavailable: %s", candidate)
+				continue
+			}
+			if info, statErr := os.Stat(resolved); statErr == nil {
+				t.Logf("Node runtime candidate: %s bytes=%d mode=%s", resolved, info.Size(), info.Mode())
+			}
+		}
+		t.Fatalf("authenticated Node runtime prerequisite: %v", err)
+	}
+	t.Setenv("SF_TEST_UNTIL_PR", "1")
+	t.Setenv("SF_TEST_NODE_FIXTURE", "1")
+	t.Setenv("SF_FAKE_PROVIDER_NODE_FIXTURE", "1")
+	compiledDevWalkingSkeleton(t, domain.MergeGuarded)
 }
 
 func compiledDevWalkingSkeleton(t *testing.T, mergeMode domain.MergeMode) {
@@ -242,6 +278,23 @@ func compiledDevWalkingSkeletonConfigured(t *testing.T, mergeMode domain.MergeMo
 		t.Fatal(err)
 	}
 	repository, bare, base := compiledWalkingSkeletonRepository(t, bareRoot)
+	if os.Getenv("SF_TEST_NODE_FIXTURE") == "1" {
+		if err := os.Remove(filepath.Join(repository, "go.mod")); err != nil {
+			t.Fatal(err)
+		}
+		for name, content := range map[string]string{
+			"package.json":  `{"name":"sf-node-fixture","private":true,"type":"module"}`,
+			"smoke.test.js": "import test from 'node:test'; test('baseline', () => {});\n",
+		} {
+			if err := os.WriteFile(filepath.Join(repository, name), []byte(content), 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		walkingSkeletonGit(t, repository, "add", ".")
+		walkingSkeletonGit(t, repository, "commit", "-m", "Node fixture baseline")
+		walkingSkeletonGit(t, repository, "push", bare, "main")
+		base = walkingSkeletonGitOutput(t, repository, "rev-parse", "HEAD")
+	}
 	if python {
 		// Only this newly created disposable fixture is changed.
 		if err := os.Remove(filepath.Join(repository, "go.mod")); err != nil {
@@ -407,6 +460,9 @@ func compiledDevWalkingSkeletonConfigured(t *testing.T, mergeMode domain.MergeMo
 	if live {
 		ticketSource = "---\ntype: feature\nmerge: guarded\nmax_duration: 20m\nmax_cost_usd: 10\n---\n# Add integer addition\n\nIn this empty dependency-free Go module, create package app with exported function Add(a, b int) int in add.go. Keep scope to add.go and add_test.go. The independent Reviewer authors add_test.go before Builder writes add.go. Use go test ./... as the verification command; SF runs the command itself. Do not commit or change configuration.\n\n## Acceptance\n- Add(2,3) equals 5.\n- Add(-2,2) equals 0.\n- Add(0,0) equals 0.\n"
 	}
+	if os.Getenv("SF_TEST_NODE_FIXTURE") == "1" {
+		ticketSource = "---\ntype: feature\nmerge: guarded\nmax_duration: 20m\n---\n# Complete the Node fixture (SF_E2E_NODE)\n\nIn this dependency-free Node project, export softwareFactoryFixture from sf_fixture.js returning ready. The independent Reviewer authors sf_fixture.test.js before Builder writes sf_fixture.js. Use node --test as the verification command; SF runs the command itself.\n\n## Acceptance\n- The Node test passes after the implementation is written.\n"
+	}
 	reviewRepairFixture := os.Getenv("SF_TEST_REVIEW_REPAIR_FIXTURE") == "1"
 	if reviewRepairFixture {
 		if live || python || concurrent {
@@ -420,6 +476,9 @@ func compiledDevWalkingSkeletonConfigured(t *testing.T, mergeMode domain.MergeMo
 	submit := compiledWalkingSkeletonCLI(t, binary, home, "submit", ticketPath, "--project", "app", "--json")
 	ref := walkingSkeletonSubmittedRef(t, submit)
 	startArgs := []string{"start", string(ref.Ticket), "--json"}
+	if os.Getenv("SF_TEST_UNTIL_PR") == "1" {
+		startArgs = append(startArgs, "--until", "pr")
+	}
 	if live {
 		startArgs = append(startArgs, "--accept-cost-estimates")
 	}
@@ -436,6 +495,86 @@ func compiledDevWalkingSkeletonConfigured(t *testing.T, mergeMode domain.MergeMo
 			limit = 8 * time.Minute
 		}
 		return walkingSkeletonWaitStateBounded(t, readOnly, ref, want, github, bare, limit, &daemonOutput)
+	}
+	if os.Getenv("SF_TEST_UNTIL_PR") == "1" {
+		paused := wait(domain.StatePaused)
+		if paused.BlockedCode != "pr_opened" || paused.ResumeState != domain.StateWaitingCI {
+			t.Fatalf("PR endpoint pause=%+v", paused)
+		}
+		if github.MutationCount("pr_create") != 1 || github.MutationCount("pr_ready") != 0 || github.MutationCount("pr_merge") != 0 {
+			t.Fatalf("PR endpoint effects: create=%d ready=%d merge=%d", github.MutationCount("pr_create"), github.MutationCount("pr_ready"), github.MutationCount("pr_merge"))
+		}
+		before := paused.Version
+		stopDaemon()
+		if t.Failed() {
+			t.Fatal("refusing PR endpoint restart after failed assertions")
+		}
+		startDaemon()
+		daemonStopped = false
+		compiledWalkingSkeletonWaitSocket(t, paths.Socket, daemonDone, &daemonOutput, &daemonStopped)
+		// Qualification and runtime composition are bound to the daemon leader.
+		// Requalify through the public CLI before testing explicit continuation;
+		// the stored PR endpoint must remain paused even with a runnable scheduler.
+		compiledWalkingSkeletonCLI(t, binary, home, qualificationArgs...)
+		status := compiledWalkingSkeletonCLI(t, binary, home, "status", string(ref.Ticket), "--json")
+		if !strings.Contains(string(status), `"state":"paused"`) || !strings.Contains(string(status), `"blocked_code":"pr_opened"`) || !strings.Contains(string(status), "continue_after_pr") {
+			t.Fatalf("restarted PR endpoint status=%s", status)
+		}
+		show := compiledWalkingSkeletonCLI(t, binary, home, "ticket", "view", string(ref.Ticket), "--json")
+		if !strings.Contains(string(show), `"state":"paused"`) || !strings.Contains(string(show), `"blocked_code":"pr_opened"`) {
+			t.Fatalf("ticket view lost PR endpoint state=%s", show)
+		}
+		invalid := exec.Command(binary, "ticket", "view", "not-a-real-ticket", "--json")
+		invalid.Env = os.Environ()
+		invalidOutput, invalidErr := invalid.CombinedOutput()
+		if invalidErr == nil || !strings.Contains(string(invalidOutput), `"code":"ticket_not_found"`) || strings.Contains(string(invalidOutput), "continue_after_pr") {
+			t.Fatalf("invalid ticket selection was not a safe JSON refusal: err=%v output=%s", invalidErr, invalidOutput)
+		}
+		readOnly.Close()
+		readOnly, err = store.OpenReadOnly(context.Background(), paths.Database)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer readOnly.Close()
+		current, err := readOnly.Ticket(context.Background(), ref)
+		if err != nil || current.State != domain.StatePaused || current.Version != before {
+			t.Fatalf("restart changed PR endpoint pause: before=%d current=%+v err=%v", before, current, err)
+		}
+		if _, err := readOnly.LoadCIObservation(context.Background(), ref); !errors.Is(err, store.ErrNotFound) {
+			t.Fatalf("PR endpoint admitted CI before continuation: %v", err)
+		}
+		compiledWalkingSkeletonCLI(t, binary, home, "ticket", "resume", string(ref.Ticket), "--json")
+		resumed := wait(domain.StateWaitingCI)
+		if resumed.Version < before+1 {
+			t.Fatalf("endpoint continuation version=%d, want at least %d", resumed.Version, before+1)
+		}
+		compiledWalkingSkeletonCLI(t, binary, home, "ticket", "resume", string(ref.Ticket), "--json")
+		// The admitted CI worker may already have appended pending observations.
+		// Authenticate the exact resume event instead of racing its live version.
+		events, err := readOnly.Events(context.Background(), ref.Channel, 0, 1000)
+		if err != nil || len(events) == 1000 {
+			t.Fatalf("read bounded endpoint events: count=%d err=%v", len(events), err)
+		}
+		resumes := 0
+		for _, event := range events {
+			if event.Ref == ref && event.Trigger == "operator_resume" {
+				resumes++
+				if event.TicketVersion != before+1 || event.From != domain.StatePaused || event.To != domain.StateWaitingCI {
+					t.Fatalf("unexpected endpoint resume event: %+v", event)
+				}
+			}
+		}
+		if resumes != 1 {
+			t.Fatalf("endpoint continuation events=%d, want exactly one", resumes)
+		}
+		if err := github.SetChecks(1, contracts.RequiredCheck{Name: "unit", ExternalID: "unit-1", State: "success"}); err != nil {
+			t.Fatal(err)
+		}
+		wait(domain.StateWaitingApproval)
+		if github.MutationCount("pr_create") != 1 || github.MutationCount("pr_ready") != 0 || github.MutationCount("pr_merge") != 0 {
+			t.Fatal("endpoint continuation duplicated publication or bypassed approval")
+		}
+		return
 	}
 	waitingCI := wait(domain.StateWaitingCI)
 	verification, err := readOnly.RecoverableVerification(context.Background(), ref)
