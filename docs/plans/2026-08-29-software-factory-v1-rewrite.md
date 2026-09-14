@@ -958,9 +958,9 @@ Example status:
 SF-123  Fix duplicate reminders
 Channel: stable
 State: waiting_approval
-Project: nysa (nysa-app)
+Project: example (example-app)
 Head: 9e1c... (reviewed and green)
-PR: https://github.com/nysa-company/nysa-app/pull/842
+PR: https://github.com/OWNER/REPO/pull/123
 Merge mode: guarded
 
 Proof
