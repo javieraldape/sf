@@ -294,7 +294,7 @@ for:
 - setsid, double-fork, and launchd/background-service escape.
 
 Failure does not block the guarded trusted-repository beta. It records
-autonomous_eligible=false and prevents post-v1 autonomous work until Sofia
+autonomous_eligible=false and prevents post-v1 autonomous work until the operator
 approves a different boundary; it must not install Docker or Colima implicitly.
 
 ## Effects and crash matrix

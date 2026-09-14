@@ -23,7 +23,7 @@ baseline; only an exact passing native-profile verdict may enable autonomy.
 - The protected default branch is `main`. Create short-lived branches matching `^(feat|fix|docs|chore|refactor|test|hotfix|spike)/[a-z0-9]+(?:-[a-z0-9]+)*$`; never push or merge without explicit approval.
 - Never print credentials or raw secret-bearing configuration. Redact values by key name and credential-bearing URL before sharing output.
 - Put disposable agent scratch and generated reports in gitignored `.context/`.
-- Keep tracked cross-session truth in `context/memory.md` under `Current truth` and `Log`; promote stable knowledge instead of keeping raw transcripts.
+- Keep `context/memory.md` public-safe: stable documentation pointers only, never session transcripts, live ticket records, personal paths, or account details. Keep private checkpoints in gitignored `.context/`.
 - Stable documentation belongs in the declared documentation roots: `docs/`. Update the relevant document when its truth changes.
 - Startup-critical rules belong in `AGENTS.md`; narrower subtree differences belong in scoped instruction files.
 - Scoped instruction files: none.

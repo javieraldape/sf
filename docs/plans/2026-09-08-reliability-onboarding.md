@@ -131,7 +131,7 @@ this document is a working design, not a completed automated-review verdict.
 | --- | --- | --- |
 | Engineering scope/source inspection | In progress | Bounded repair and amendment composition implemented; restart acceptance pending |
 | Independent review | Pending | Required before integration |
-| Hosted verification | First slice passed | [34271491625](https://github.com/nysa-company/sf/actions/runs/34271491625), exact 1b1b7e4; prompt/status tests, existing readmission tests, native build only; not full repair acceptance |
+| Hosted verification | First slice passed | [34271491625](https://github.com/javieraldape/sf/actions/runs/34271491625), exact 1b1b7e4; prompt/status tests, existing readmission tests, native build only; not full repair acceptance |
 
 VERDICT: implementation design in progress; not cleared for merge.
 
@@ -140,7 +140,7 @@ VERDICT: implementation design in progress; not cleared for merge.
 
 ## Execution checkpoint — bounded repair foundation
 
-- Hosted run [34273314750](https://github.com/nysa-company/sf/actions/runs/34273314750)
+- Hosted run [34273314750](https://github.com/javieraldape/sf/actions/runs/34273314750)
   passed at b521934: strict failed-command evidence, prompt/status tests,
   first-use matrix (including honest unsupported/unprepared refusals), docs
   checks, and native candidate build. No local tests were run.
@@ -148,7 +148,7 @@ VERDICT: implementation design in progress; not cleared for merge.
   Builder / verification / budget binding, replay-once tests, a normative
   Building-to-Building diagnosis entry, generic-entry refusal, and bounded
   retained-byte fingerprints. Hosted run
-  [34274649199](https://github.com/nysa-company/sf/actions/runs/34274649199)
+  [34274649199](https://github.com/javieraldape/sf/actions/runs/34274649199)
   passed those foundation tests, onboarding, and exact candidate build.
 - Worker/phase admission, historical verification/restart bridges, and physical
   readmission are in progress. This foundation is not yet end-to-end recovery.
@@ -158,7 +158,7 @@ VERDICT: implementation design in progress; not cleared for merge.
 
 ## Execution checkpoint — independent amendment handoff
 
-- Hosted [34275904089](https://github.com/nysa-company/sf/actions/runs/34275904089)
+- Hosted [34275904089](https://github.com/javieraldape/sf/actions/runs/34275904089)
   passed at 378072a for connected bounded repair, Store recovery, admission,
   prompt/status and first-use checks. Its localruntime selection was incorrectly
   named and selected no tests; the next workflow fixes that selection explicitly.
@@ -197,7 +197,7 @@ VERDICT: implementation design in progress; not cleared for merge.
 
 ## Execution checkpoint — isolated validation and review
 
-- Run [34282752323](https://github.com/nysa-company/sf/actions/runs/34282752323)
+- Run [34282752323](https://github.com/javieraldape/sf/actions/runs/34282752323)
   at e88323f passed Store, Git, admission, accepted/rejected runtime amendment,
   CLI/behavior and registration-onboarding groups. It failed the remaining
   runtime repair assertion (live versus historical projection) and restart's

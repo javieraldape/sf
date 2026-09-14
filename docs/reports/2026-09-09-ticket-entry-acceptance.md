@@ -21,9 +21,9 @@ was introduced. Nothing is installed or changed in a live pilot by these tests.
 
 ## Evidence
 
-[Focused GitHub run](https://github.com/nysa-company/sf/actions/runs/34356101825)
+[Focused GitHub run](https://github.com/javieraldape/sf/actions/runs/34356101825)
 passed all steps on macOS at the prior `83c31ef` source. The final
-[explicit-consent candidate focused run](https://github.com/nysa-company/sf/actions/runs/34357643516)
+[explicit-consent candidate focused run](https://github.com/javieraldape/sf/actions/runs/34357643516)
 also passed every step, including a home test proving plain `run` never supplies
 estimated-cost consent and `run estimates` explicitly supplies the existing flag.
 The timings below are recorded measurements from that final candidate run:
@@ -47,7 +47,7 @@ typing/decision time, installation, authentication, provider qualification,
 network fetch, model execution and ticket delivery. It is not a human usability
 trial or a claim that a fresh developer can complete setup in that time.
 
-[Full factory acceptance](https://github.com/nysa-company/sf/actions/runs/34358150167)
+[Full factory acceptance](https://github.com/javieraldape/sf/actions/runs/34358150167)
 passed on the same candidate: **21/21 jobs succeeded**, including the required
 `SF acceptance` aggregate, all normal/runtime integration shards, full race
 coverage, compiled E2E, crash, security, upgrade and static validation. No local

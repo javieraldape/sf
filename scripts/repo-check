@@ -261,8 +261,6 @@ def validate(root: Path) -> Check:
         settings = {}
     deny = settings.get("permissions", {}).get("deny", []) if isinstance(settings, dict) else []
     check.require(isinstance(deny, list) and DENIES.issubset(set(deny)), ".claude/settings.json missing Claude Read denies")
-    marketplace = settings.get("extraKnownMarketplaces", {}).get("nysa-agents-plugin", {}) if isinstance(settings, dict) else {}
-    check.require(marketplace.get("autoUpdate") is True, ".claude/settings.json must enable marketplace autoUpdate")
 
     managed = manifest.get("managed")
     check.require(isinstance(managed, dict), "managed must be a JSON object")

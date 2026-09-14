@@ -1,6 +1,6 @@
 # First-class GitHub SSH transport
 
-Status: implemented and validated on `feat/github-ssh`; approved by Sofia on
+Status: implemented and validated on `feat/github-ssh`; approved by the operator on
 2026-09-09. Source candidate `fcb44195afbca4a3e81cd4d286ff58437d8142c4` passed
 focused and full hosted acceptance. See
 [the acceptance receipt](../reports/2026-09-09-github-ssh-acceptance.md).
