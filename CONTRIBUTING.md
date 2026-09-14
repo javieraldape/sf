@@ -11,6 +11,12 @@ relevant plan in `docs/plans/`. Keep changes small and use a branch matching
 `feat/`, `fix/`, `docs/`, `test/`, or another approved prefix. Never commit
 credentials, provider transcripts, raw command output, or generated state.
 
+Keep personal session notes and recovery checkpoints in gitignored `.context/`,
+not in public project memory. Acceptance reports should preserve technical
+results and limitations without live ticket IDs, private repository links,
+personal account names, credential locations, or machine-specific paths.
+Use synthetic identities and configurable checkout roots in tests.
+
 For a normal source change, run the repository's documented Go, repository,
 and secret checks. Native provider, macOS sandbox, GitHub, and paid-account
 acceptance are separate gates; fixture or hosted-CI success must not be
@@ -23,4 +29,3 @@ Describe the user-visible behavior, safety boundary, tests run, and any
 unsupported environments. Include exact reproduction and redacted output for
 failures. Do not merge, publish, install a daemon, or change an existing live
 project without explicit authorization.
-

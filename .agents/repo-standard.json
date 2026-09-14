@@ -21,14 +21,14 @@
   "managed": {
     "blocks": {
       ".gitignore": "c58171d8dc5fe3318c38df004e7bb1d7cc1ce56b7fe745e23a92757575a35508",
-      "AGENTS.md": "918b735d8c205ab798860a6df5e88f9a9ede150ce23be300876418e131fc37d4"
+      "AGENTS.md": "564d4000349deed05c8765ab09a861a882ec81708a3b69bd56d17774311e98b5"
     },
     "files": {
       ".conductor/settings.toml": "7d6c6d5396079d00a782330a32e03050bbc44288808f68ace685ce1850d02127",
       ".github/pull_request_template.md": "ab378f0d77c2e8644e9839e12d5ab9490bcaaa5ef064b70882473e0ccb2c424d",
       ".github/workflows/repository-baseline.yml": "046293f3578c7f1f1d993b8fa35cf8bfc915f0b8696098f75fd384be9f710862",
       "docs/git-flow.md": "3aff2ae40cda90c1180f381a28fe4c3e164e3748be9bf9b258256955865b0108",
-      "scripts/repo-check": "b5303449acb9c46c23e15c1261e131ca9acaed119d1ede761df7125f600e8da1",
+      "scripts/repo-check": "8811845e6e63dbe79b57b003ed7c1b61b887f6933c5f1497e7251ea748a515dd",
       "scripts/secret-scan": "fa59f18dd4f32efc10ed7fdb14629c0c21776335d71b2fd81483389d1a4dc81f"
     }
   },

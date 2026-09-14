@@ -2,7 +2,7 @@
 
 Status: Approved; release-candidate hardening and validation in progress
 
-Plan owner: Sofia, with Codex as plan author
+Plan owner: the operator, with Codex as plan author
 
 Working product name: Software Factory; CLI name: sf
 
@@ -21,8 +21,8 @@ product claims; this plan and the current verification plan are authoritative.
 
 Software Factory v1 is a local, operator-friendly service that turns one
 Markdown ticket into a reviewed GitHub pull request and, according to the
-selected merge mode, either waits for Sofia to merge externally or requests an
-exact reviewed-head merge after her approval.
+selected merge mode, either waits for the operator to merge externally or requests an
+exact reviewed-head merge after their approval.
 
 The shortest successful path is:
 
@@ -42,7 +42,7 @@ ticket
   -> done
 ~~~
 
-At any active or waiting workflow point, Sofia can see what is happening,
+At any active or waiting workflow point, the operator can see what is happening,
 pause safely, stop the current agent, enter the worktree when one exists, make
 changes, and return control to the factory. A queued ticket is controlled with
 `start`; a typed blocked ticket remains fail-closed and is controlled with
@@ -56,7 +56,7 @@ process must be repaired first.
 
 ### v1 is for
 
-- Sofia building Nysa on a trusted local macOS machine.
+- The operator building Nysa on a trusted local macOS machine.
 - Trusted repositories explicitly registered by the operator.
 - Feature, bug, refactor, infrastructure/configuration, documentation, and
   non-merging spike tickets.
@@ -222,7 +222,7 @@ behaviors and failure fixtures, not a runtime dependency.
 | Bounded repair loops | Retain, maximum two automatic corrections | Prevents invisible infinite work |
 | Cost/time accounting | Replace with phase attempts and one ticket ceiling | No separate financial ledgers |
 | Qualification generations | Replace with ordinary CI, a disposable walking skeleton, SemVer, and stable/dev channels | Familiar open-source release model |
-| Per-product sealed releases | Replace with explicit stable binary version and isolated dev binary | Sofia can improve sf without moving Nysa |
+| Per-product sealed releases | Replace with explicit stable binary version and isolated dev binary | The operator can improve sf without moving Nysa |
 | Passports and transition receipts | Replace with transactional ticket, phase-run, and effect rows | SQLite is the authority |
 | Route journals | Replace with the provider/model/version recorded on each phase attempt | No mid-ticket routing language |
 | Multiple ledgers | Replace with attempt usage columns and one derived event stream | One authority, one readable projection |
@@ -624,7 +624,7 @@ Supported types:
 | spike | Time-box and report questions | Never merge automatically; no PR unless explicitly requested |
 
 Ticket dependencies and initiatives remain prose/operator concerns in v1.
-Sofia starts prerequisite tickets explicitly.
+The operator starts prerequisite tickets explicitly.
 
 ## Verification-first role flow
 
@@ -883,7 +883,7 @@ The mode is selected by project default and may be narrowed per ticket.
 
 - sf creates and updates the draft PR.
 - It reports when review and checks are green.
-- Sofia owns marking ready and merging on GitHub.
+- The operator owns marking ready and merging on GitHub.
 - sf observes the merge. It reaches done only when the merged PR source head is
   the exact reviewed head and required checks were green. A different manual
   head becomes the terminal external_merged outcome with a prominent
@@ -894,7 +894,7 @@ The mode is selected by project default and may be narrowed per ticket.
 - sf creates the PR, performs independent review, and waits for green required
   checks.
 - sf pauses at waiting_approval.
-- sf approve --operator <identity> binds Sofia's approval to the exact reviewed
+- sf approve --operator <identity> binds the operator's approval to the exact reviewed
   source-head SHA.
 - A head change invalidates approval and requires fresh review.
 - sf requests the configured immediate exact-head merge after approval. It
@@ -958,9 +958,9 @@ Example status:
 SF-123  Fix duplicate reminders
 Channel: stable
 State: waiting_approval
-Project: nysa (nysa-app)
+Project: example (example-app)
 Head: 9e1c... (reviewed and green)
-PR: https://github.com/nysa-company/nysa-app/pull/842
+PR: https://github.com/OWNER/REPO/pull/123
 Merge mode: guarded
 
 Proof
@@ -969,8 +969,8 @@ Proof
   required GitHub checks: 7/7 passed
   independent review: passed by claude/...
 
-Next: sf approve SF-123 --operator sofia
-Alternative: sf take SF-123 --operator sofia
+Next: sf approve SF-123 --operator developer
+Alternative: sf take SF-123 --operator developer
 ~~~
 
 Mode-aware command validity:
@@ -1286,11 +1286,11 @@ and stable/dev isolation is proven.
   provider/command profiles that passed the stronger OS-enforced eligibility
   proof.
 - Qualify autonomous merge in the disposable GitHub repository, then consider
-  a later stable promotion with Sofia's approval.
+  a later stable promotion with the operator's approval.
 - Enabling autonomous mode on even one Nysa ticket remains a separate explicit
   post-qualification approval; it is not implied by plan or release approval.
 
-Exit: success criteria pass and Sofia approves stable use.
+Exit: success criteria pass and the operator approves stable use.
 
 ## Delegation and integration
 
@@ -1379,7 +1379,7 @@ The current repository ships:
 - Final GitHub repository name. The working local directory and module may use
   sf until a remote is created.
 - Open-source license. Apache-2.0 is recommended for its explicit patent grant;
-  Sofia chooses before any remote/public release.
+  The operator chooses before any remote/public release.
 - Homebrew distribution versus a signed direct binary after the Nysa pilot.
 - Whether a later high-risk mode containerizes only Cursor or all providers.
 - Whether a later version adds GitHub Issues as an optional ticket source.
@@ -1438,7 +1438,7 @@ Review mode: Engineering manager plan review
 
 Scope decision: selective replacement; full local v1, no laptop-off operation
 
-Review verdict: GO for Sofia's approval
+Review verdict: GO for the operator's approval
 
 Architecture status: load-bearing decisions resolved and independently challenged
 

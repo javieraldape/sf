@@ -15,8 +15,8 @@ containment proof and the guarded pilot.
 
 ## v1 user and self-serve beta
 
-The initial operator is Sofia building Nysa from a trusted local macOS machine.
-The next audience is open-source developers already using Claude or Codex who
+SF is designed for developers working on a trusted local macOS machine.
+The audience is open-source developers already using Claude or Codex who
 want to delegate a bounded ticket through the CLI. They should be able to
 preview project compatibility, create and select tickets without copying long
 IDs, and understand the next action without author assistance.

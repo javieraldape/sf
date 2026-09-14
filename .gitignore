@@ -18,3 +18,6 @@ coverage/
 *.sqlite-shm
 *.sqlite-wal
 .sf/
+
+# Private session history and machine-specific recovery checkpoints.
+/context/checkpoints/

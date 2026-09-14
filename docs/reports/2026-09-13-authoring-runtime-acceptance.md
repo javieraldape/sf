@@ -5,7 +5,7 @@ Status: real draft/home operation acceptance passed; final broad CI and merge pe
 ## Exact candidate and validation
 
 Candidate: `cc55929652b1462c4e173497c63e63df3ac2216d`.
-[GitHub validation](https://github.com/nysa-company/sf/actions/runs/34749449916)
+[GitHub validation](https://github.com/javieraldape/sf/actions/runs/34749449916)
 passed CLI normal/race, scripted journeys, authoring regressions, native ICU
 boundary checks, bundle build, repository, documentation and secret checks.
 This targeted lane is not a substitute for the full repository acceptance gate.

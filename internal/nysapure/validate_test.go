@@ -223,7 +223,10 @@ func TestNysaRetrievalFusionClosureReadOnly(t *testing.T) {
 	if os.Getenv("SF_NYSA_LOCAL_PROOF") != "1" {
 		t.Skip("set SF_NYSA_LOCAL_PROOF=1 to run the read-only local Nysa compatibility proof")
 	}
-	const nysa = "/Users/sofiagonzalez-2/Projects/nysa-company/nysa-app"
+	nysa := os.Getenv("SF_NYSA_LOCAL_ROOT")
+	if nysa == "" || !filepath.IsAbs(nysa) {
+		t.Fatal("SF_NYSA_LOCAL_ROOT must name an absolute checkout path when SF_NYSA_LOCAL_PROOF=1")
+	}
 	if _, err := os.Stat(nysa); err != nil {
 		t.Skip("local Nysa checkout is unavailable")
 	}
