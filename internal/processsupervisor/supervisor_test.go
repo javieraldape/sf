@@ -781,13 +781,88 @@ func legacyRunFixture(t *testing.T, command string) (*Supervisor, contracts.Drai
 func testProviderGate(t *testing.T) string {
 	t.Helper()
 	gate := filepath.Join(t.TempDir(), "provider-gate")
-	// The helper mirrors the production wrapper's argv shape. The supervisor's
-	// own durable recorder remains the boundary under test here; the helper
-	// intentionally does not consume the inherited release byte.
-	if err := os.WriteFile(gate, []byte("#!/bin/sh\n[ \"$1\" = __provider_gate ] || exit 125\nshift\ntarget=$1\nshift\n# argv0 is the staged Codex spelling; this shell fixture does not need it.\nshift\nexec \"$target\" \"$@\"\n"), 0o700); err != nil {
+	// Mirror the production gate ordering: the provider cannot run until the
+	// supervisor has recorded its durable process identity and releases one SOH
+	// byte. EOF or any other byte fails closed before the target is executed.
+	if err := os.WriteFile(gate, []byte("#!/bin/sh\n[ \"$1\" = __provider_gate ] || exit 125\nshift\ntarget=$1\nshift\n# argv0 is the staged Codex spelling; this shell fixture does not need it.\nshift\nrelease=$(dd bs=1 count=1 2>/dev/null <&3) || exit 125\nexec 3<&-\n[ \"$release\" = \"$(printf '\\001')\" ] || exit 125\nexec \"$target\" \"$@\"\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	return gate
+}
+
+func TestProviderGateRequiresRecordedReleaseBeforeTarget(t *testing.T) {
+	gate := testProviderGate(t)
+	marker := filepath.Join(t.TempDir(), "target-runs")
+	target := filepath.Join(t.TempDir(), "target")
+	if err := os.WriteFile(target, []byte("#!/bin/sh\nprintf 'ran\\n' >>\"$1\"\nexit 23\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	run := func(t *testing.T, release []byte, waitBeforeRelease bool) error {
+		t.Helper()
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		read, write, err := os.Pipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		cmd := exec.CommandContext(ctx, gate, "__provider_gate", target, target, marker)
+		cmd.ExtraFiles = []*os.File{read}
+		if err := cmd.Start(); err != nil {
+			read.Close()
+			write.Close()
+			t.Fatal(err)
+		}
+		read.Close()
+		done := make(chan error, 1)
+		go func() { done <- cmd.Wait() }()
+		if waitBeforeRelease {
+			select {
+			case err := <-done:
+				write.Close()
+				t.Fatalf("gate exited before release: %v", err)
+			case <-time.After(50 * time.Millisecond):
+			}
+			if _, err := os.Stat(marker); !errors.Is(err, os.ErrNotExist) {
+				write.Close()
+				t.Fatalf("target ran before release: %v", err)
+			}
+		}
+		if len(release) > 0 {
+			if _, err := write.Write(release); err != nil {
+				write.Close()
+				t.Fatal(err)
+			}
+		}
+		if err := write.Close(); err != nil {
+			t.Fatal(err)
+		}
+		return <-done
+	}
+	for name, release := range map[string][]byte{"eof": nil, "invalid": {'x'}} {
+		t.Run(name, func(t *testing.T) {
+			if err := run(t, release, false); err == nil || exitCode(err) != 125 {
+				t.Fatalf("invalid release exit=%d err=%v", exitCode(err), err)
+			}
+			if _, err := os.Stat(marker); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("invalid release executed target: %v", err)
+			}
+		})
+	}
+	if err := run(t, []byte{1}, true); err == nil || exitCode(err) != 23 {
+		t.Fatalf("valid release exit=%d err=%v", exitCode(err), err)
+	}
+	contents, err := os.ReadFile(marker)
+	if err != nil || string(contents) != "ran\n" {
+		t.Fatalf("valid release target runs=%q err=%v", contents, err)
+	}
+}
+
+func exitCode(err error) int {
+	var exit *exec.ExitError
+	if errors.As(err, &exit) {
+		return exit.ExitCode()
+	}
+	return -1
 }
 
 func codexRunFixture(t *testing.T, executable string, binding contracts.RuntimeBinding, authHome string) (contracts.DrainRequest, contracts.Invocation, contracts.PhaseInput) {

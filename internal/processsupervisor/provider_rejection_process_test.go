@@ -109,7 +109,7 @@ func supervisedRejectionProcess(t *testing.T, scenario string) {
 	}
 	result, runErr := s.runWithCLISecrets(ctx, request, invocation, input, lookup)
 	if runErr == nil || result.ExitCode != -1 || ctx.Err() != nil || !recorded {
-		t.Fatalf("synthetic process outcome: exit=%d err=%v", result.ExitCode, runErr)
+		t.Fatalf("synthetic process outcome: exit=%d err=%v recorded=%t context=%v", result.ExitCode, runErr, recorded, ctx.Err())
 	}
 	drain, receipt, err := s.DrainServerRejection(ctx, request)
 	if scenario != "complete" && scenario != "store_retry" {
@@ -137,7 +137,7 @@ func supervisedRejectionProcess(t *testing.T, scenario string) {
 		recorded = false
 		result, runErr = s.runWithCLISecrets(ctx, request, invocation, input, lookup)
 		if runErr == nil || result.ExitCode != -1 || !recorded {
-			t.Fatal("second synthetic process did not record its rejection")
+			t.Fatalf("second synthetic process outcome: exit=%d err=%v recorded=%t context=%v", result.ExitCode, runErr, recorded, ctx.Err())
 		}
 		drain, receipt, err = s.DrainServerRejection(ctx, request)
 		if err != nil {
