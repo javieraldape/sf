@@ -454,17 +454,24 @@ func (s *Store) operatorSourceResumePreparedCandidateWitnessFrom(ctx context.Con
 		return OperatorSourceResumePreparedCandidateWitness{}, false, ErrEvidenceConflict
 	}
 	var project Project
+	var removedAt string
 	project.Channel, project.ID = ref.Channel, ref.Project
 	err = conn.QueryRowContext(ctx, `SELECT p.canonical_path, p.base_ref, p.current_config_generation,
-		COALESCE(c.digest, ''), COALESCE(c.snapshot_bytes, X'')
+		COALESCE(c.digest, ''), COALESCE(c.snapshot_bytes, X''),p.lifecycle,p.registration_generation,p.removed_at
 		FROM projects p LEFT JOIN project_configurations c
 		ON c.channel=p.channel AND c.project_id=p.id AND c.generation=p.current_config_generation
-		WHERE p.channel=? AND p.id=?`, ref.Channel, ref.Project).Scan(&project.Path, &project.BaseRef, &project.ConfigGeneration, &project.ConfigDigest, &project.ConfigSnapshot)
+		WHERE p.channel=? AND p.id=?`, ref.Channel, ref.Project).Scan(&project.Path, &project.BaseRef, &project.ConfigGeneration, &project.ConfigDigest, &project.ConfigSnapshot, &project.Lifecycle, &project.RegistrationGeneration, &removedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return OperatorSourceResumePreparedCandidateWitness{}, false, ErrNotFound
 	}
 	if err != nil {
 		return OperatorSourceResumePreparedCandidateWitness{}, false, normalizeBusy(ctx, err)
+	}
+	if removedAt != "" {
+		project.RemovedAt, err = time.Parse(time.RFC3339Nano, removedAt)
+		if err != nil {
+			return OperatorSourceResumePreparedCandidateWitness{}, false, ErrEvidenceConflict
+		}
 	}
 	rows, err := conn.QueryContext(ctx, `SELECT semantic_key FROM git_mutation_intents
 		WHERE channel=? AND project_id=? AND ticket_id=? AND operation='commit'

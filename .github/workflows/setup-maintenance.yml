@@ -1,0 +1,36 @@
+name: setup-maintenance
+
+on:
+  pull_request:
+    paths:
+      - internal/cli/**
+      - internal/store/**
+      - .github/workflows/setup-maintenance.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: setup-maintenance-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  focused:
+    # Fast, portable authority/filesystem tests complement (not replace) the
+    # required macOS packaged CLI and full Store/runtime acceptance suites.
+    name: Setup maintenance regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Directory repair and project CLI safety
+        run: go test -race -p 1 -count=1 ./internal/cli -run '^Test(DoctorFix|Project)' -v
+      - name: Project authority, migration, races and recovery identity
+        run: go test -race -p 1 -count=1 ./internal/store -run '^Test(ProjectRemoval|RemovedProject|ProjectLifecycle|RegisterProject|OperatorSourceResumePreparedCandidateWitness)' -v

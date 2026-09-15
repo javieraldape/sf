@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -684,6 +685,10 @@ func TestOperatorSourceResumePreparedCandidateWitnessBindsSFG(t *testing.T) {
 	witness, found, err := database.OperatorSourceResumeRecoverablePreparedCandidateWitness(ctx, building.Ref, building.Version, buildFence)
 	if err != nil || !found || witness.Commit.CommitOID != g || witness.Commit.ParentOID != f || witness.Builder != builderKey || witness.Command.Key != postbuild || witness.Verification.Checkpoint.CommitOID != f || !sameJSON(witness.Source.SourceCommit, source) {
 		t.Fatalf("prepared witness=%+v found=%v err=%v", witness, found, err)
+	}
+	registeredProject, err := database.Project(ctx, building.Ref.Channel, building.Ref.Project)
+	if err != nil || !reflect.DeepEqual(witness.Project, registeredProject) {
+		t.Fatalf("prepared witness project=%+v registered=%+v err=%v", witness.Project, registeredProject, err)
 	}
 	builderDigest, err := phaseartifact.BuilderEvidenceDigest(builderArtifact)
 	if err != nil {
