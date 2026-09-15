@@ -20,6 +20,7 @@ func configureCommandHelp(root *cobra.Command) {
 		"approve":           "Approve the exact reviewed head for guarded merge",
 		"reject":            "Reject the reviewed candidate with a reason",
 		"doctor":            "Check local prerequisites, authentication, and provider readiness",
+		"doctor fix":        "Preview and repair safe SF directory setup; guide other fixes",
 		"auth":              "Inspect or open official provider authentication flows",
 		"auth status":       "Show authentication status without displaying credentials",
 		"auth login":        "Open the selected provider's official login flow",
@@ -77,7 +78,7 @@ func configureCanonicalHelp(root *cobra.Command) {
 		switch command.Name() {
 		case "ticket", "factory", "home":
 			command.GroupID = "primary"
-		case "auth", "init", "providers", "config", "doctor", "version", "bundle", "runtimes", "update", "rollback":
+		case "auth", "init", "project", "providers", "config", "doctor", "version", "bundle", "runtimes", "update", "rollback":
 			command.GroupID = "setup"
 		default:
 			command.GroupID = "compatibility"

@@ -36,8 +36,10 @@ type app struct {
 	input               io.Reader
 	interactive         func() bool
 	fetchIssue          func(context.Context, string) ([]byte, error)
+	doctorFixDeps       func(domain.Channel, string) DoctorFixDeps
 	expectedDraftDigest string
 	canonical           bool
+	runProject          func(context.Context, ProjectRequest) api.Response
 }
 
 // NewCommand returns the public CLI. The client is injected so command tests
@@ -96,6 +98,7 @@ func (a *app) command() *cobra.Command {
 	root.AddCommand(a.bundleCommand())
 	root.AddCommand(a.runtimesCommand())
 	root.AddCommand(a.homeCommand())
+	root.AddCommand(a.projectCommand())
 	a.configureTicketSelection(root)
 	a.configureDecisionSelection(root)
 	configureCanonicalHelp(root)
@@ -523,6 +526,7 @@ func defaultOperatorLabel() string {
 
 func (a *app) doctorCommand() *cobra.Command {
 	var repo string
+	var dryRun, yes bool
 	command := &cobra.Command{Use: "doctor", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		if repo != "" {
 			absolute, err := filepath.Abs(repo)
@@ -531,10 +535,43 @@ func (a *app) doctorCommand() *cobra.Command {
 			}
 			repo = absolute
 		}
-		report := RunDoctor(cmd.Context(), productionDoctorDeps(a.channel, repo))
-		return a.emit(reportResponse(report))
+		deps := productionDoctorDeps(a.channel, repo)
+		return a.emit(reportResponse(RunDoctor(cmd.Context(), deps)))
 	}}
-	command.Flags().StringVar(&repo, "repo", "", "trusted repository path")
+	fix := &cobra.Command{Use: "fix", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
+		if repo != "" {
+			absolute, err := filepath.Abs(repo)
+			if err != nil {
+				return a.emit(failure("invalid_repository", "repository path could not be resolved", []string{binaryName(), "doctor", "--help"}))
+			}
+			repo = absolute
+		}
+		deps := DoctorFixDeps{Doctor: productionDoctorDeps(a.channel, repo)}
+		if a.doctorFixDeps != nil {
+			deps = a.doctorFixDeps(a.channel, repo)
+		}
+		preview := RunDoctorFix(cmd.Context(), deps, false)
+		if dryRun || !doctorFixHasPlanned(preview) || doctorFixHasRefusal(preview) {
+			return a.emit(doctorFixResponse(preview, deps.Doctor.Binary))
+		}
+		if !yes {
+			if !a.canSelectInteractively() {
+				return a.emit(failure("operator_action_required", "automatic repair requires an interactive confirmation or --yes", []string{deps.Doctor.Binary, "doctor", "fix", "--yes"}))
+			}
+			if err := Render(a.errOut, doctorFixResponse(preview, deps.Doctor.Binary), false); err != nil {
+				return err
+			}
+			answer, err := a.homeAnswer(cmd, "Doctor can only create fixed channel directories and set owned directories to mode 0700. Type fix to apply the preview: ")
+			if err != nil || !doctorFixConfirmation(answer) {
+				return a.emit(failure("operator_action_required", "doctor repair cancelled; no mutations were run", []string{deps.Doctor.Binary, "doctor", "fix", "--dry-run"}))
+			}
+		}
+		return a.emit(doctorFixResponse(RunDoctorFix(cmd.Context(), deps, true), deps.Doctor.Binary))
+	}}
+	command.PersistentFlags().StringVar(&repo, "repo", "", "trusted repository path")
+	fix.Flags().BoolVar(&dryRun, "dry-run", false, "preview safe repairs without mutation")
+	fix.Flags().BoolVar(&yes, "yes", false, "apply previewed safe repairs without an interactive prompt")
+	command.AddCommand(fix)
 	return command
 }
 

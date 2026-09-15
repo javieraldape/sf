@@ -31,6 +31,10 @@ func exitCode(response api.Response) ExitCode {
 		return ExitInternal
 	}
 	switch response.Error.Code {
+	case "project_changed", "project_removal_blocked", "project_removed":
+		return ExitAction
+	case "project_unavailable":
+		return ExitWait
 	case "unsupported_runtime":
 		return ExitCompatibility
 	case "decision_recovery_unavailable":
@@ -126,7 +130,15 @@ func Render(writer io.Writer, response api.Response, jsonOutput bool) error {
 		var value any
 		if err := json.Unmarshal(response.Data, &value); err == nil {
 			if object, ok := value.(map[string]any); ok {
-				if _, hasChecks := object["checks"]; hasChecks {
+				if stringField(object, "schema") == projectSchema {
+					if err := renderProjects(writer, object); err != nil {
+						return err
+					}
+				} else if stringField(object, "schema") == doctorFixSchema {
+					if err := renderDoctorFix(writer, object); err != nil {
+						return err
+					}
+				} else if _, hasChecks := object["checks"]; hasChecks {
 					if err := renderDoctor(writer, object); err != nil {
 						return err
 					}

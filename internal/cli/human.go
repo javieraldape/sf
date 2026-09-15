@@ -19,6 +19,12 @@ func renderHumanData(writer io.Writer, value any) error {
 	if _, hasChecks := object["checks"]; hasChecks {
 		return renderDoctor(writer, object)
 	}
+	if stringField(object, "schema") == projectSchema {
+		return renderProjects(writer, object)
+	}
+	if stringField(object, "schema") == doctorFixSchema {
+		return renderDoctorFix(writer, object)
+	}
 	if stringField(object, "schema") == authSchema {
 		return renderAuthentication(writer, object)
 	}

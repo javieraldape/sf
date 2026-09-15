@@ -421,9 +421,11 @@ func insertV41Fixture(t *testing.T, database *Store, ctx context.Context) v41Fix
 func insertV41FixtureOptions(t *testing.T, database *Store, ctx context.Context, withBinding, withCompletion bool) v41Fixture {
 	t.Helper()
 	ref := domain.TicketRef{Channel: domain.ChannelDev, Project: "nysa", Ticket: "SF-ci-authority"}
-	if err := database.CreateTicket(ctx, Ticket{Ref: ref, SourceDigest: strings.Repeat("s", 64), Type: domain.TicketFeature, MergeMode: domain.MergeGuarded}); err != nil {
-		t.Fatal(err)
-	}
+	// This helper intentionally populates genuine pre-v64 databases. Do not use
+	// current Store admission methods: they must require the lifecycle columns
+	// introduced by v64, while this fixture must retain the schema-era shape it
+	// is testing before the migration runner opens it.
+	insertArgs(t, database.db, `INSERT INTO tickets(channel,project_id,id,source_digest,ticket_type,merge_mode,state,resume_state,version,runner_epoch,workflow_id,blocked_code,title,problem,acceptance_json,source_bytes,priority,created_at,max_duration_ns,max_cost_micro_usd) VALUES(?,?,?,?,?,?,?,NULL,?,?,?,'','','','[]',X'','normal',?,0,0)`, ref.Channel, ref.Project, ref.Ticket, strings.Repeat("s", 64), domain.TicketFeature, domain.MergeGuarded, domain.StateQueued, 1, 1, "", "2026-08-30T00:00:00Z")
 	f := v41Fixture{ref: ref, head1: strings.Repeat("a", 40), tree1: strings.Repeat("b", 40), head2: strings.Repeat("c", 40), tree2: strings.Repeat("d", 40), witness: "sha256:" + strings.Repeat("1", 64), observation: "sha256:" + strings.Repeat("2", 64), trans: "sha256:" + strings.Repeat("3", 64), eventCreated: "2026-08-30T00:00:00Z"}
 	base := strings.Repeat("e", 40)
 	plain := func(ch byte) string { return strings.Repeat(string(ch), 64) }

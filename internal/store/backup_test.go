@@ -53,6 +53,30 @@ func TestStableChannelBacksUpBeforeSchemaMigration(t *testing.T) {
 	}
 }
 
+func TestProjectLifecycleV63MigrationReopens(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "dev.sqlite")
+	createDatabaseAtVersion(t, path, 63)
+	database, err := Open(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+	database, err = Open(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err := hasColumns(context.Background(), database.db, "projects", "lifecycle", "registration_generation", "removed_at"); err != nil {
+		t.Fatal(err)
+	}
+	if got := rawSchemaVersion(t, path); got != 64 {
+		t.Fatalf("schema=%d", got)
+	}
+}
+
 func TestAuthoringV61MigrationReopensWithPrivateBackup(t *testing.T) {
 	root := t.TempDir()
 	if err := os.Chmod(root, 0700); err != nil {
@@ -1227,6 +1251,8 @@ func testMigration(version int) []string {
 		return migrationV62
 	case 63:
 		return migrationV63
+	case 64:
+		return migrationV64
 	default:
 		return nil
 	}

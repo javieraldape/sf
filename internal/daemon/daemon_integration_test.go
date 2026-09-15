@@ -950,6 +950,30 @@ func TestDaemonStartRefusesDanglingLegacyConfigurationHistory(t *testing.T) {
 	}
 }
 
+func TestDaemonSubmitRefusesRemovedProjectWhileFactoryRemainsAvailable(t *testing.T) {
+	d, paths, _ := testDaemon(t)
+	ctx := context.Background()
+	preview, err := d.store.ProjectRemovalPreview(ctx, domain.ChannelStable, "demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, changed, err := d.store.RemoveProject(ctx, domain.ChannelStable, "demo", preview.Project.RegistrationGeneration, time.Now()); err != nil || !changed {
+		t.Fatalf("remove changed=%v err=%v", changed, err)
+	}
+	ticketPath := writeTicket(t, t.TempDir(), "Removed project must not start work")
+	code, output, stderr := executeCLI(t, ctx, paths, "submit", ticketPath, "--project", "demo", "--json")
+	var response api.Response
+	if err := json.Unmarshal([]byte(output), &response); err != nil {
+		t.Fatalf("decode=%v output=%q stderr=%q", err, output, stderr)
+	}
+	if code != int(cli.ExitAction) || response.OK || response.Error == nil || response.Error.Code != "project_removed" {
+		t.Fatalf("code=%d response=%+v", code, response)
+	}
+	if code, _, stderr := executeCLI(t, ctx, paths, "status", "--json"); code != 0 {
+		t.Fatalf("factory no longer available: code=%d stderr=%q", code, stderr)
+	}
+}
+
 func TestDaemonLogsReturnBoundedRedactedDurableEvents(t *testing.T) {
 	d, paths, _ := testDaemon(t)
 	started := createAndStartControlTicket(t, d, "SF-logs")

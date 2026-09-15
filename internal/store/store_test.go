@@ -885,11 +885,17 @@ func TestTicketIdentityIsChannelUniqueAndProjectLookupIsDurable(t *testing.T) {
 
 func TestRegisterProjectIsExactIdempotentAndSnapshotsOnStart(t *testing.T) {
 	database, ctx := openTestStore(t)
-	snapshot := []byte(`{"name":"configured"}`)
-	digestBytes := sha256.Sum256(snapshot)
+	effective, err := config.Resolve(config.DefaultMachineLimits(), config.DefaultProject("configured", "/tmp/configured"), config.TicketOverride{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, digest, err := config.Snapshot(effective)
+	if err != nil {
+		t.Fatal(err)
+	}
 	project := Project{
 		Channel: domain.ChannelDev, ID: "configured", Path: "/tmp/configured", BaseRef: "main",
-		ConfigGeneration: 1, ConfigDigest: fmt.Sprintf("%x", digestBytes[:]), ConfigSnapshot: snapshot,
+		ConfigGeneration: 1, ConfigDigest: digest, ConfigSnapshot: snapshot,
 	}
 	created, err := database.RegisterProject(ctx, project)
 	if err != nil || !created {

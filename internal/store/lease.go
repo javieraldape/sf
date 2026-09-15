@@ -1022,6 +1022,13 @@ func (s *Store) startWithOwnership(ctx context.Context, ref domain.TicketRef, ex
 	}
 	observed := false
 	err := s.write(ctx, func(conn *sql.Conn) error {
+		var projectActive int
+		if err := conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM projects WHERE channel=? AND id=? AND lifecycle='active'`, ref.Channel, ref.Project).Scan(&projectActive); err != nil {
+			return err
+		}
+		if projectActive != 1 {
+			return ErrProjectRemoved
+		}
 		var state domain.State
 		var version, runner uint64
 		var persistedWorkflow string
@@ -1071,7 +1078,7 @@ func (s *Store) startWithOwnership(ctx context.Context, ref domain.TicketRef, ex
 					WHERE channel=? AND project_id=? AND id=? AND state='queued' AND version=? AND runner_epoch=?
 					AND EXISTS (SELECT 1 FROM projects p JOIN project_configurations c
 						ON c.channel=p.channel AND c.project_id=p.id AND c.generation=p.current_config_generation
-						WHERE p.channel=? AND p.id=? AND p.current_config_generation=? AND c.digest=? AND c.snapshot_bytes=?)`, workflowID,
+						WHERE p.channel=? AND p.id=? AND p.lifecycle='active' AND p.current_config_generation=? AND c.digest=? AND c.snapshot_bytes=?)`, workflowID,
 					admission.project.ConfigGeneration, admission.project.ConfigDigest, admission.project.ConfigSnapshot,
 					ref.Channel, ref.Project, ref.Ticket, expectedVersion, runner,
 					ref.Channel, ref.Project, admission.project.ConfigGeneration, admission.project.ConfigDigest, admission.project.ConfigSnapshot)
@@ -1080,9 +1087,10 @@ func (s *Store) startWithOwnership(ctx context.Context, ref domain.TicketRef, ex
 					config_generation=(SELECT current_config_generation FROM projects WHERE channel=? AND id=?),
 					config_digest=COALESCE((SELECT c.digest FROM projects p JOIN project_configurations c ON c.channel=p.channel AND c.project_id=p.id AND c.generation=p.current_config_generation WHERE p.channel=? AND p.id=?), ''),
 					config_snapshot_bytes=COALESCE((SELECT c.snapshot_bytes FROM projects p JOIN project_configurations c ON c.channel=p.channel AND c.project_id=p.id AND c.generation=p.current_config_generation WHERE p.channel=? AND p.id=?), X'')
-					WHERE channel=? AND project_id=? AND id=? AND state='queued' AND version=? AND runner_epoch=?`, workflowID,
+					WHERE channel=? AND project_id=? AND id=? AND state='queued' AND version=? AND runner_epoch=?
+					AND EXISTS (SELECT 1 FROM projects p WHERE p.channel=? AND p.id=? AND p.lifecycle='active')`, workflowID,
 					ref.Channel, ref.Project, ref.Channel, ref.Project, ref.Channel, ref.Project,
-					ref.Channel, ref.Project, ref.Ticket, expectedVersion, runner)
+					ref.Channel, ref.Project, ref.Ticket, expectedVersion, runner, ref.Channel, ref.Project)
 			}
 			if err != nil {
 				return err
@@ -1130,8 +1138,12 @@ func loadCurrentProjectConfiguration(ctx context.Context, conn *sql.Conn, channe
 		COALESCE(c.digest,''),COALESCE(c.snapshot_bytes,X'')
 		FROM projects p LEFT JOIN project_configurations c
 		ON c.channel=p.channel AND c.project_id=p.id AND c.generation=p.current_config_generation
-		WHERE p.channel=? AND p.id=?`, channel, id).Scan(&project.Path, &project.BaseRef, &project.ConfigGeneration, &project.ConfigDigest, &project.ConfigSnapshot)
+		WHERE p.channel=? AND p.id=? AND p.lifecycle='active'`, channel, id).Scan(&project.Path, &project.BaseRef, &project.ConfigGeneration, &project.ConfigDigest, &project.ConfigSnapshot)
 	if errors.Is(err, sql.ErrNoRows) {
+		var exists int
+		if scanErr := conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM projects WHERE channel=? AND id=?`, channel, id).Scan(&exists); scanErr == nil && exists == 1 {
+			return Project{}, ErrProjectRemoved
+		}
 		return Project{}, ErrNotFound
 	}
 	if err != nil {
@@ -1238,6 +1250,13 @@ func (s *Store) AcquireLeases(ctx context.Context, ref domain.TicketRef, expecte
 	}
 	var acquired []Lease
 	err = s.write(ctx, func(conn *sql.Conn) error {
+		var projectActive int
+		if err := conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM projects WHERE channel=? AND id=? AND lifecycle='active'`, ref.Channel, ref.Project).Scan(&projectActive); err != nil {
+			return err
+		}
+		if projectActive != 1 {
+			return ErrProjectRemoved
+		}
 		if err := s.assertTicketFence(ctx, conn, ref, expectedVersion, fence); err != nil {
 			return err
 		}

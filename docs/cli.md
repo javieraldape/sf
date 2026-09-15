@@ -221,6 +221,9 @@ sf take <ticket> --operator <identity>
 sf approve <ticket> --operator <identity> [--head <full-reviewed-commit>]
 sf reject <ticket> --operator <identity> --reason <text> [--head <full-reviewed-commit>]
 sf doctor [--repo <path>]
+sf doctor fix [--dry-run] [--yes] [--repo <path>]
+sf project list [--all]
+sf project remove [project] [--dry-run] [--yes]
 sf daemon cleanup prepare
 sf daemon cleanup recover
 sf factory run
@@ -555,6 +558,37 @@ authenticated base for this probe and reports `not_run`. Credential-helper
 success alone is not repository access. Doctor checks current-leader
 attestation for Planner, Builder and Reviewer; historical selection after a
 daemon restart is not a passing qualification.
+
+`doctor` itself never changes state. `doctor fix --dry-run` previews the exact
+bounded repair, while `doctor fix` asks for confirmation in a terminal; use
+`--yes` for noninteractive automation. Fixes are limited to authenticated
+SF-owned directory creation and permission repair. Login, missing executables,
+runtime preparation, provider qualification, low disk, incompatible databases,
+unhealthy daemons, quarantines, credential changes, process killing, Git
+changes, and software installation remain guided actions. A successful fix is
+safe to repeat; rerun `doctor` to verify it.
+
+Project maintenance is local and channel-scoped:
+
+```text
+sf project list
+sf project list --all
+sf project remove app --dry-run
+sf project remove app --yes
+```
+
+`project list` shows active registrations; `--all` includes removed
+registrations. `project remove` previews the exact repository and retained
+data before confirmation. In a terminal, omitting the project opens a picker;
+JSON, piped input, and automation require an exact project plus `--yes` for a
+mutation. `--dry-run` is read-only. Removal is refused when any unfinished
+ticket or unresolved process, lease, or external effect remains; it never
+cancels work implicitly. Removal only unregisters the project: source files,
+`.sf/config.toml`, dirty worktrees, ticket/configuration history, and GitHub
+PRs remain untouched. Re-running `sf init` after the work is settled validates
+the repository and configuration normally and reactivates the exact removed
+registration. Other projects, the shared daemon, and the other channel are
+unaffected.
 
 If status shows `runtime_not_composed`, the socket is alive but workflow
 execution is unavailable. Run Doctor and qualify the selected provider set in
