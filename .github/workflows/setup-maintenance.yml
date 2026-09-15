@@ -34,3 +34,5 @@ jobs:
         run: go test -race -p 1 -count=1 ./internal/cli -run '^Test(DoctorFix|Project)' -v
       - name: Project authority, migration, races and recovery identity
         run: go test -race -p 1 -count=1 ./internal/store -run '^Test(ProjectRemoval|RemovedProject|ProjectLifecycle|RegisterProject|OperatorSourceResumePreparedCandidateWitness)' -v
+      - name: Historical schema and backup compatibility
+        run: go test -p 1 -count=1 ./internal/store -run '(Migration|Upgrade|Schema|Compatibility|Backup)' -v
